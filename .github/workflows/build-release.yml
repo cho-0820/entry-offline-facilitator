@@ -19,6 +19,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Setup MSVC developer command prompt (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Setup Python 3.11 (for node-gyp)
         uses: actions/setup-python@v4
         with:
