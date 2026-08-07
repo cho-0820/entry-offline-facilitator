@@ -13,7 +13,7 @@ jobs:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     env:
-      GYP_MSVS_VERSION: 2022
+      USE_HARD_LINKS: false
 
     steps:
       - name: Checkout code
