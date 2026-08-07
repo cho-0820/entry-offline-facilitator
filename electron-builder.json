@@ -33,8 +33,7 @@
         {
             "ext": "ent",
             "role": "Editor",
-            "name": "Entry File",
-            "icon": "icon.icns"
+            "name": "Entry File"
         }
     ],
     "files": [

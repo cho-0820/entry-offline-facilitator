@@ -5,9 +5,9 @@ module.exports = async (context) => {
     const { artifactPaths } = context;
     const { APPLE_ID, APPLE_PASSWORD, TEAM_ID } = process.env;
 
-    return await Promise.all(artifactPaths.map(async (artifactPath) => {
+    await Promise.all(artifactPaths.map(async (artifactPath) => {
         if (path.extname(artifactPath) === '.pkg') {
-            return await notarize({
+            await notarize({
                 appBundleId: 'org.playentry.entry',
                 appPath: artifactPath,
                 appleId: APPLE_ID,

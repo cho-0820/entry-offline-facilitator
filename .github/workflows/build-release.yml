@@ -14,6 +14,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       USE_HARD_LINKS: false
+      GYP_MSVS_VERSION: 2022
 
     steps:
       - name: Checkout code
@@ -22,6 +23,8 @@ jobs:
       - name: Setup MSVC developer command prompt (Windows)
         if: matrix.os == 'windows-latest'
         uses: ilammy/msvc-dev-cmd@v1
+        with:
+          vsversion: "2022"
 
       - name: Setup Python 3.11 (for node-gyp)
         uses: actions/setup-python@v4
