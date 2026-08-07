@@ -1,0 +1,42 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+          cache: 'yarn'
+          cache-dependency-path: entry-offline/yarn.lock
+
+      - name: Install dependencies (ignore-scripts)
+        run: yarn install --ignore-scripts
+        working-directory: entry-offline
+
+      - name: Rebuild native dependencies (electron-rebuild)
+        run: yarn rebuild
+        working-directory: entry-offline
+
+      - name: Build Webpack assets
+        run: yarn webpack:prod
+        working-directory: entry-offline
+
+      - name: Build and Publish Electron Package
+        run: npx electron-builder -c --publish always
+        working-directory: entry-offline
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
