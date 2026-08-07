@@ -23,6 +23,8 @@ import { IMapDispatchToProps, IMapStateToProps } from '../store';
 import DragAndDropContainer from './DragAndDropContainer';
 import EntryModalHelper from '../helper/entry/entryModalHelper';
 import ipcRendererHelper from '../helper/ipcRendererHelper';
+import eventLogger from '../helper/logger/eventLogger';
+import AIAsidePanel from './AIAsidePanel';
 
 interface IProps extends IReduxDispatch, IReduxState {}
 
@@ -65,6 +67,8 @@ class Workspace extends Component<IProps> {
 
     constructor(props: Readonly<IProps>) {
         super(props);
+        (window as any).workspaceInstance = this;
+        (window as any).eventLogger = eventLogger;
         this.addMainProcessEvents();
         ModalHelper.loadPopup([]);
     }
@@ -86,6 +90,7 @@ class Workspace extends Component<IProps> {
     }
 
     componentDidMount() {
+        (window as any).workspaceInstance = this;
         IpcRendererHelper.checkUpdate();
         setTimeout(async () => {
             await this._waitFontLoad();
@@ -225,6 +230,9 @@ class Workspace extends Component<IProps> {
         if (workspace) {
             workspace.changeEvent.attach(this, this.handleChangeWorkspaceMode);
         }
+
+        // Initialize AI Facilitator Integrated Event Logger (Phase 1)
+        eventLogger.init();
     }
 
     async handleSaveSoundBuffer(
@@ -612,6 +620,10 @@ class Workspace extends Component<IProps> {
             // 별다른 행동을 해야하는것은 아니다.
         }
 
+        const isNewProject = !project;
+        eventLogger.startNewSession(isNewProject);
+        this.setState({ executionStatus: this.state.executionStatus });
+
         this.addEntryEvents();
         Entry.loadProject(project);
 
@@ -711,7 +723,7 @@ class Workspace extends Component<IProps> {
                         }
                     }}
                 />
-                <div>
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden' }}>
                     <Header
                         onSaveAction={this.handleSaveAction}
                         onFileAction={this.handleFileAction}
@@ -721,7 +733,10 @@ class Workspace extends Component<IProps> {
                         programLanguageMode={programLanguageMode}
                         executionStatus={executionStatus}
                     />
-                    <div ref={this.container} className="workspace" />
+                    <div style={{ display: 'flex', flex: 1, height: 'calc(100vh - 43px)', width: '100%', overflow: 'hidden', position: 'relative' }}>
+                        <div ref={this.container} className="workspace" style={{ flex: 1, minWidth: 0, height: '100%' }} />
+                        <AIAsidePanel key={eventLogger.getSessionId()} />
+                    </div>
                     {isShow && (
                         <ModalProgress
                             title={title}

@@ -1,4 +1,5 @@
 import { app, dialog, ipcMain, Menu, systemPreferences } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import HardwareWindowManager from './views/hardwareWindowManager';
 import MainWindowManager from './views/mainWindowManager';
 import AboutWindowManager from './views/aboutWindowManager';
@@ -10,6 +11,11 @@ import('./ipcMainHelper');
 import('./utils/functions/globalShortCutRegister');
 
 const logger = createLogger('main/main.ts');
+if (process.platform === 'win32') {
+    if (!process.env.PATH || !process.env.PATH.includes('System32')) {
+        process.env.PATH = `${process.env.PATH || ''};C:\\Windows\\System32;C:\\Windows\\System32\\WindowsPowerShell\\v1.0`;
+    }
+}
 const commandLineOptions: Readonly<CommandLineOptions> = parseCommandLine(process.argv.slice(1));
 const configurations: Readonly<FileConfigurations> = configInitialize(commandLineOptions.config);
 const runtimeProperties: RuntimeGlobalProperties = {
@@ -26,6 +32,7 @@ if (!app.requestSingleInstanceLock()) {
 } else {
     let mainWindow: MainWindowManager;
     app.commandLine.appendSwitch('disable-renderer-backgrounding');
+    app.commandLine.appendSwitch('remote-debugging-port', '9222');
 
     app.on('window-all-closed', function() {
         app.quit();
@@ -40,6 +47,9 @@ if (!app.requestSingleInstanceLock()) {
     });
 
     app.once('ready', () => {
+        autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+            logger.error(`[autoUpdater] Check for updates error: ${err}`);
+        });
         mainWindow = new MainWindowManager(commandLineOptions);
         const hardwareWindow = new HardwareWindowManager();
         const aboutWindow = new AboutWindowManager(mainWindow.window);

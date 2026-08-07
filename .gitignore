@@ -18,3 +18,12 @@ src/*_build
 # specifics
 build/*.exe
 *.log
+.env
+*.env
+*.jsonl
+secondary_data/
+interim_reports/
+intermediate_results/
+visualizations/
+powershell.cmd
+powershell.bat

@@ -49,6 +49,361 @@ new (class {
         ipcMain.handle('saveSoundBuffer', this.saveSoundBuffer.bind(this));
         ipcMain.handle('getExistSoundFilePath', this.getExistSoundFilePath.bind(this));
         ipcMain.handle('getPapagoHeaderInfo', this.getPapagoHeaderInfo.bind(this));
+        ipcMain.handle('getAnthropicApiKeyInfo', () => {
+            const key = process.env.ANTHROPIC_API_KEY || '';
+            if (!key) {
+                logger.warn('[IPC] ANTHROPIC_API_KEY is not defined in process.env');
+                return { exists: false, maskedKey: '' };
+            }
+            const masked = key.substring(0, 7) + '...' + key.substring(key.length - 4);
+            logger.info(`[IPC] ANTHROPIC_API_KEY detected: ${masked}`);
+            return { exists: true, maskedKey: masked };
+        });
+
+        ipcMain.handle('callCodeAssistantApi', async (event: IpcMainInvokeEvent, prompt: string, history: Array<{ role: 'user' | 'assistant'; content: string }> = []) => {
+            const apiKey = process.env.ANTHROPIC_API_KEY;
+            if (!apiKey) {
+                return {
+                    text: '오류: ANTHROPIC_API_KEY가 시스템 환경변수에 설정되어 있지 않습니다.',
+                    code_json: null,
+                };
+            }
+
+            interface BlockSpec {
+                paramCount: number;
+                allowedParamTypes?: string[][];
+                hasStatements?: boolean;
+            }
+
+            const BLOCK_SPECS: Record<string, BlockSpec> = {
+                when_run_button_click: { paramCount: 0 },
+                move_direction: {
+                    paramCount: 1,
+                    allowedParamTypes: [['number', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable', 'value_of_index_from_list']],
+                },
+                rotate_by_angle: {
+                    paramCount: 1,
+                    allowedParamTypes: [['number', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable']],
+                },
+                dialog_time: {
+                    paramCount: 2,
+                    allowedParamTypes: [
+                        ['text', 'number', 'get_variable'],
+                        ['number', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                    ],
+                },
+                dialog: {
+                    paramCount: 1,
+                    allowedParamTypes: [['text', 'number', 'get_variable']],
+                },
+                repeat_basic: {
+                    paramCount: 1,
+                    allowedParamTypes: [['number', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable']],
+                    hasStatements: true,
+                },
+                get_variable: {
+                    paramCount: 1,
+                    allowedParamTypes: [['text', 'string']],
+                },
+                set_variable: {
+                    paramCount: 2,
+                    allowedParamTypes: [
+                        ['text', 'string'],
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                    ],
+                },
+                value_of_index_from_list: {
+                    paramCount: 2,
+                    allowedParamTypes: [
+                        ['text', 'string'],
+                        ['number', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                    ],
+                },
+                calc_plus: {
+                    paramCount: 2,
+                    allowedParamTypes: [
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                    ],
+                },
+                calc_minus: {
+                    paramCount: 2,
+                    allowedParamTypes: [
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                    ],
+                },
+                calc_times: {
+                    paramCount: 2,
+                    allowedParamTypes: [
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                    ],
+                },
+                calc_divide: {
+                    paramCount: 2,
+                    allowedParamTypes: [
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                    ],
+                },
+                number: { paramCount: 1 },
+                text: { paramCount: 1 },
+            };
+
+            const START_EVENT_BLOCK_TYPES = ['when_run_button_click'];
+
+            function validateBlockJsonTypes(codeJson: any): boolean {
+                if (!codeJson) return true;
+                if (!Array.isArray(codeJson)) return false;
+                if (codeJson.length === 0) return true;
+
+                // 1. Thread level validation: check if every thread starts with a Start Event Block
+                const threads = (Array.isArray(codeJson[0]) && typeof codeJson[0][0] === 'object')
+                    ? codeJson
+                    : [codeJson];
+
+                for (let t = 0; t < threads.length; t++) {
+                    const thread = threads[t];
+                    if (!Array.isArray(thread) || thread.length === 0) {
+                        logger.warn(`[BlockValidator] Thread #${t} is empty or not an array`);
+                        return false;
+                    }
+
+                    const firstBlock = thread[0];
+                    if (!firstBlock || typeof firstBlock !== 'object' || !firstBlock.type) {
+                        logger.warn(`[BlockValidator] Thread #${t} first block is missing or invalid`);
+                        return false;
+                    }
+
+                    if (!START_EVENT_BLOCK_TYPES.includes(firstBlock.type)) {
+                        logger.warn(`[BlockValidator] Thread #${t} must start with a start event block, but got "${firstBlock.type}"`);
+                        return false;
+                    }
+                }
+
+                // 2. Individual block recursive spec validation
+                function checkBlock(node: any): boolean {
+                    if (!node) return true;
+                    if (Array.isArray(node)) {
+                        return node.every(checkBlock);
+                    }
+                    if (typeof node === 'object') {
+                        if (!node.type || typeof node.type !== 'string') {
+                            logger.warn('[BlockValidator] Missing or non-string block type');
+                            return false;
+                        }
+
+                        const spec = BLOCK_SPECS[node.type];
+                        if (!spec) {
+                            logger.warn(`[BlockValidator] Unauthorized block type: "${node.type}"`);
+                            return false;
+                        }
+
+                        const params = node.params;
+                        if (!Array.isArray(params)) {
+                            logger.warn(`[BlockValidator] Block "${node.type}" must have a params array (even if empty [])`);
+                            return false;
+                        }
+
+                        if (params.length !== spec.paramCount) {
+                            logger.warn(`[BlockValidator] Block "${node.type}" expected exactly ${spec.paramCount} params, but got ${params.length}`);
+                            return false;
+                        }
+
+                        for (let i = 0; i < params.length; i++) {
+                            const param = params[i];
+                            if (typeof param === 'object' && param !== null) {
+                                if (spec.allowedParamTypes && spec.allowedParamTypes[i]) {
+                                    const paramType = param.type;
+                                    if (!paramType || !spec.allowedParamTypes[i].includes(paramType)) {
+                                        logger.warn(`[BlockValidator] Block "${node.type}" param #${i} has disallowed type "${paramType}"`);
+                                        return false;
+                                    }
+                                }
+                                if (!checkBlock(param)) return false;
+                            } else if (typeof param !== 'string' && typeof param !== 'number' && typeof param !== 'boolean') {
+                                logger.warn(`[BlockValidator] Block "${node.type}" param #${i} has invalid primitive type: ${typeof param}`);
+                                return false;
+                            }
+                        }
+
+                        if (node.statements && Array.isArray(node.statements)) {
+                            if (!node.statements.every(checkBlock)) return false;
+                        }
+                    }
+                    return true;
+                }
+
+                return checkBlock(codeJson);
+            }
+
+            const https = require('https');
+            const systemPrompt = `당신은 초등 바이브 코딩 교육용 '코드 도우미' AI입니다.
+학생이 질문하면 상냥하고 격려하는 어조로 설명하고, 도구 'emit_code_assistant_response'를 호출하세요.
+
+[엔트리 화면의 정확한 블록 명칭 및 카테고리 사전]
+다음은 실제 엔트리 화면에 표시되는 정확한 카테고리 명칭과 블록 표시 문구입니다. 반드시 이 표현만 사용하고, 지어낸 다른 표현(예: '실행 버튼', '이동 블록' 등)을 절대로 쓰지 마세요:
+1. [시작] 카테고리:
+   - "when_run_button_click": '시작하기 버튼을 클릭했을 때'
+2. [움직임] 카테고리:
+   - "move_direction": '이동 방향으로 _ 만큼 움직이기' (예: '이동 방향으로 10 만큼 움직이기')
+   - "rotate_by_angle": '오브젝트를 _ 만큼 회전하기' (예: '오브젝트를 90 만큼 회전하기')
+3. [생김새] 카테고리:
+   - "dialog": '_ 말하기' (예: '안녕 말하기')
+   - "dialog_time": '_ 을(를) _ 초 동안 말하기' (예: '안녕 을(를) 4 초 동안 말하기')
+4. [흐름] 카테고리:
+   - "repeat_basic": '_ 번 반복하기' (예: '10 번 반복하기')
+5. [자료] 카테고리 (변수/리스트):
+   - "get_variable": [변수 이름]
+   - "set_variable": '[변수 이름] 를 _ (으)로 정하기'
+   - "value_of_index_from_list": '[리스트 이름] 의 _ 번째 항목'
+6. [계산] 카테고리:
+   - "calc_plus": '_ + _', "calc_minus": '_ - _', "calc_times": '_ * _', "calc_divide": '_ / _'
+
+[가독성 향상 지침]
+- 설명 텍스트 작성 시 중요한 블록 이름이나 카테고리 이름은 **굵은 글씨** (예: **[흐름]** 카테고리의 **'10 번 반복하기'** 블록)로 강조하세요.
+- 각 설명 항목은 불릿 리스트('- ')와 줄바꿈(\\n)을 활용하여 깔끔하고 보기 쉽게 작성하세요.
+
+[엄격한 블록 스펙 및 스레드 시작 규칙]
+1. 모든 블록 스레드 배열의 첫 번째 블록은 반드시 시작 이벤트 블록인 "when_run_button_click" 이어야 합니다!
+2. "when_run_button_click": params는 반드시 빈 배열 [] 이어야 함 (params: []).
+3. "move_direction": params는 정확히 1개(이동 거리 숫자)만 가져야 함 (params: [{ "type": "number", "params": [10] }]). 절대 방향 문자열이나 2번째 인자를 넣지 마세요!
+4. "rotate_by_angle": params는 정확히 1개 (params: [{ "type": "number", "params": [90] }]).
+5. "dialog_time": params는 정확히 2개 (말할 내용 문자열, 시간 숫자).
+6. "dialog": params는 정확히 1개 (말할 내용 문자열).
+7. "repeat_basic": params는 정확히 1개 (반복 횟수 숫자).
+8. 모든 파라미터는 중첩 객체 형태로 작성해야 합니다 (예: { "type": "number", "params": [10] }).
+유해한 비속어나 코딩과 완전히 무관한 질문이 들어오면 정중하게 거부하는 텍스트만 전달하세요.`;
+
+            // Build sanitized multi-turn messages array from history + current prompt
+            const formattedMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+            if (Array.isArray(history)) {
+                for (const h of history) {
+                    if (h && (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string' && h.content.trim()) {
+                        formattedMessages.push({
+                            role: h.role,
+                            content: h.content.trim(),
+                        });
+                    }
+                }
+            }
+
+            // Ensure first message is role 'user' (Anthropic API constraint)
+            while (formattedMessages.length > 0 && formattedMessages[0].role !== 'user') {
+                formattedMessages.shift();
+            }
+
+            // Append current prompt
+            formattedMessages.push({ role: 'user', content: prompt });
+
+            // Merge consecutive messages of the same role if any
+            const sanitizedMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+            for (const msg of formattedMessages) {
+                if (sanitizedMessages.length > 0 && sanitizedMessages[sanitizedMessages.length - 1].role === msg.role) {
+                    sanitizedMessages[sanitizedMessages.length - 1].content += `\n${msg.content}`;
+                } else {
+                    sanitizedMessages.push({ ...msg });
+                }
+            }
+
+            logger.info(`[IPC][Claude] Sending ${sanitizedMessages.length} message(s) in conversation history.`);
+
+            const requestBody = JSON.stringify({
+                model: 'claude-haiku-4-5-20251001',
+                max_tokens: 1024,
+                system: systemPrompt,
+                messages: sanitizedMessages,
+                tools: [
+                    {
+                        name: 'emit_code_assistant_response',
+                        description: 'Emit structured response containing explanation text and Entry.js block JSON array.',
+                        input_schema: {
+                            type: 'object',
+                            properties: {
+                                text: {
+                                    type: 'string',
+                                    description: 'Friendly Korean explanation text for primary school students.',
+                                },
+                                code_json: {
+                                    type: 'array',
+                                    description: 'Entry.js 2D thread JSON array. Leave empty array if no code is generated.',
+                                },
+                            },
+                            required: ['text'],
+                        },
+                    },
+                ],
+                tool_choice: {
+                    type: 'tool',
+                    name: 'emit_code_assistant_response',
+                },
+            });
+
+            return new Promise((resolve) => {
+                const req = https.request(
+                    {
+                        hostname: 'api.anthropic.com',
+                        path: '/v1/messages',
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-api-key': apiKey,
+                            'anthropic-version': '2023-06-01',
+                            'Content-Length': Buffer.byteLength(requestBody),
+                        },
+                    },
+                    (res: any) => {
+                        let data = '';
+                        res.on('data', (chunk: any) => {
+                            data += chunk;
+                        });
+                        res.on('end', () => {
+                            if (res.statusCode >= 200 && res.statusCode < 300) {
+                                try {
+                                    const parsed = JSON.parse(data);
+                                    let outputText = '';
+                                    let codeJson: any = null;
+
+                                    if (parsed.content && Array.isArray(parsed.content)) {
+                                        const toolUseContent = parsed.content.find((c: any) => c.type === 'tool_use');
+                                        if (toolUseContent && toolUseContent.input) {
+                                            outputText = toolUseContent.input.text || '';
+                                            codeJson = toolUseContent.input.code_json || null;
+                                        } else {
+                                            const textContent = parsed.content.find((c: any) => c.type === 'text');
+                                            if (textContent) {
+                                                outputText = textContent.text || '';
+                                            }
+                                        }
+                                    }
+
+                                    // Double validation against block type whitelist
+                                    const isValid = validateBlockJsonTypes(codeJson);
+                                    if (!isValid) {
+                                        logger.warn('[BlockValidator] code_json invalidated due to unapproved block types.');
+                                        codeJson = null;
+                                    }
+
+                                    resolve({ text: outputText, code_json: codeJson, isValidTypes: isValid });
+                                } catch (e: any) {
+                                    resolve({ text: data, code_json: null, isValidTypes: false });
+                                }
+                            } else {
+                                resolve({ text: `API 호출 에러 [HTTP ${res.statusCode}]: ${data}`, code_json: null, isValidTypes: false });
+                            }
+                        });
+                    }
+                );
+
+                req.on('error', (err: any) => {
+                    resolve({ text: `네트워크 오류: ${err.message}`, code_json: null, isValidTypes: false });
+                });
+
+                req.write(requestBody);
+                req.end();
+            });
+        });
     }
 
     async saveProject(event: IpcMainInvokeEvent, project: ObjectLike, targetPath: string) {

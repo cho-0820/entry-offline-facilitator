@@ -57,7 +57,7 @@ export default class {
             width: 1080,
             height: 824,
             title,
-            show: false,
+            show: true,
             backgroundColor: '#e5e5e5',
             webPreferences: {
                 backgroundThrottling: false,

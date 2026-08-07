@@ -16,13 +16,18 @@
         ]
     },
     "win": {
-        "target": "dir",
+        "target": "nsis",
         "extraResources": [
             {
                 "from": "validator/win/validator.exe",
                 "to": ""
             }
         ]
+    },
+    "publish": {
+        "provider": "github",
+        "owner": "cho-0820",
+        "repo": "entry-offline-facilitator"
     },
     "fileAssociations": [
         {

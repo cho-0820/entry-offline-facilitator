@@ -1,6 +1,7 @@
 import RendererUtils from './rendererUtils';
 import StorageManager from './storageManager';
 import EntryModalHelper from './entry/entryModalHelper';
+import eventLogger from './logger/eventLogger';
 
 const { ipcInvoke } = window;
 
@@ -10,11 +11,25 @@ const { ipcInvoke } = window;
  */
 
 export default class {
-    static loadProject(filePath: string) {
-        return ipcInvoke<IEntry.Project>('loadProject', filePath);
+    static async loadProject(filePath: string) {
+        const project = await ipcInvoke<IEntry.Project>('loadProject', filePath);
+        if (project && (project as any).messages) {
+            (window as any).__ENTRY_LOADED_MESSAGES__ = (project as any).messages;
+            console.log('[Phase6] Loaded custom messages array from project:', (project as any).messages);
+        }
+        return project;
     }
 
     static saveProject(project: IEntry.Project, targetPath: string) {
+        // Phase 6: Save conversation messages ONLY if data collection consent is granted
+        if (eventLogger.getIsDataCollectionEnabled()) {
+            const aiMessages = (window as any).__ENTRY_AI_MESSAGES__ || [];
+            (project as any).messages = aiMessages;
+            console.log(`[Phase6] Saving project with ${aiMessages.length} custom messages (consent=granted).`);
+        } else {
+            delete (project as any).messages;
+            console.log('[Phase6] Saving project WITHOUT messages (consent=denied/false).');
+        }
         return ipcInvoke<void>('saveProject', project, targetPath);
     }
 
@@ -156,5 +171,13 @@ export default class {
 
     static getExistSoundFilePath(sound: { filename: string; ext?: string }) {
         return ipcInvoke('getExistSoundFilePath', sound);
+    }
+
+    static getAnthropicApiKeyInfo() {
+        return ipcInvoke<{ exists: boolean; maskedKey: string }>('getAnthropicApiKeyInfo');
+    }
+
+    static callCodeAssistantApi(prompt: string, history: Array<{ role: 'user' | 'assistant'; content: string }> = []) {
+        return ipcInvoke<{ text: string; code_json?: any }>('callCodeAssistantApi', prompt, history);
     }
 }
