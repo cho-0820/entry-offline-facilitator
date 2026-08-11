@@ -79,27 +79,34 @@ new (class {
                 when_run_button_click: { paramCount: 0 },
                 move_direction: {
                     paramCount: 1,
-                    allowedParamTypes: [['number', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable', 'value_of_index_from_list']],
+                    allowedParamTypes: [['number', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable', 'get_canvas_input_value', 'value_of_index_from_list']],
                 },
                 rotate_by_angle: {
                     paramCount: 1,
-                    allowedParamTypes: [['number', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable']],
+                    allowedParamTypes: [['number', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable', 'get_canvas_input_value']],
                 },
                 dialog_time: {
                     paramCount: 2,
                     allowedParamTypes: [
-                        ['text', 'number', 'get_variable'],
-                        ['number', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                        ['text', 'number', 'get_variable', 'get_canvas_input_value', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide'],
+                        ['number', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable', 'get_canvas_input_value'],
                     ],
                 },
                 dialog: {
                     paramCount: 1,
-                    allowedParamTypes: [['text', 'number', 'get_variable']],
+                    allowedParamTypes: [['text', 'number', 'get_variable', 'get_canvas_input_value', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide']],
                 },
                 repeat_basic: {
                     paramCount: 1,
-                    allowedParamTypes: [['number', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable']],
+                    allowedParamTypes: [['number', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable', 'get_canvas_input_value']],
                     hasStatements: true,
+                },
+                ask_and_wait: {
+                    paramCount: 1,
+                    allowedParamTypes: [['text', 'number', 'get_variable', 'string', 'value_of_index_from_list']],
+                },
+                get_canvas_input_value: {
+                    paramCount: 0,
                 },
                 get_variable: {
                     paramCount: 1,
@@ -109,42 +116,42 @@ new (class {
                     paramCount: 2,
                     allowedParamTypes: [
                         ['text', 'string'],
-                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable', 'get_canvas_input_value'],
                     ],
                 },
                 value_of_index_from_list: {
                     paramCount: 2,
                     allowedParamTypes: [
                         ['text', 'string'],
-                        ['number', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                        ['number', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable', 'get_canvas_input_value'],
                     ],
                 },
                 calc_plus: {
                     paramCount: 2,
                     allowedParamTypes: [
-                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
-                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable', 'get_canvas_input_value'],
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable', 'get_canvas_input_value'],
                     ],
                 },
                 calc_minus: {
                     paramCount: 2,
                     allowedParamTypes: [
-                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
-                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable', 'get_canvas_input_value'],
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable', 'get_canvas_input_value'],
                     ],
                 },
                 calc_times: {
                     paramCount: 2,
                     allowedParamTypes: [
-                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
-                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable', 'get_canvas_input_value'],
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable', 'get_canvas_input_value'],
                     ],
                 },
                 calc_divide: {
                     paramCount: 2,
                     allowedParamTypes: [
-                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
-                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable'],
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable', 'get_canvas_input_value'],
+                        ['number', 'text', 'calc_plus', 'calc_minus', 'calc_times', 'calc_divide', 'get_variable', 'get_canvas_input_value'],
                     ],
                 },
                 number: { paramCount: 1 },
@@ -228,6 +235,13 @@ new (class {
                             }
                         }
 
+                        if (spec.hasStatements) {
+                            if (!node.statements || !Array.isArray(node.statements) || node.statements.length === 0 || !Array.isArray(node.statements[0]) || node.statements[0].length === 0) {
+                                logger.warn(`[BlockValidator] Container block "${node.type}" has empty or missing statements array! Invalidation triggered.`);
+                                return false;
+                            }
+                        }
+
                         if (node.statements && Array.isArray(node.statements)) {
                             if (!node.statements.every(checkBlock)) return false;
                         }
@@ -254,7 +268,9 @@ new (class {
    - "dialog_time": '_ 을(를) _ 초 동안 말하기' (예: '안녕 을(를) 4 초 동안 말하기')
 4. [흐름] 카테고리:
    - "repeat_basic": '_ 번 반복하기' (예: '10 번 반복하기')
-5. [자료] 카테고리 (변수/리스트):
+5. [자료] 카테고리 (변수/리스트/입력/대답):
+   - "ask_and_wait": '_ 을(를) 묻고 대답 기다리기' (예: '얼마를 저금할까요? 을(를) 묻고 대답 기다리기')
+   - "get_canvas_input_value": '대답' (값 파라미터 블록, params: [])
    - "get_variable": [변수 이름]
    - "set_variable": '[변수 이름] 를 _ (으)로 정하기'
    - "value_of_index_from_list": '[리스트 이름] 의 _ 번째 항목'
@@ -262,18 +278,64 @@ new (class {
    - "calc_plus": '_ + _', "calc_minus": '_ - _', "calc_times": '_ * _', "calc_divide": '_ / _'
 
 [가독성 향상 지침]
-- 설명 텍스트 작성 시 중요한 블록 이름이나 카테고리 이름은 **굵은 글씨** (예: **[흐름]** 카테고리의 **'10 번 반복하기'** 블록)로 강조하세요.
+- 설명 텍스트 작성 시 중요한 블록 이름이나 카테고리 이름은 **굵은 글씨** (예: **[자료]** 카테고리의 **'얼마를 저금할까요? 을(를) 묻고 대답 기다리기'** 블록)로 강조하세요.
 - 각 설명 항목은 불릿 리스트('- ')와 줄바꿈(\\n)을 활용하여 깔끔하고 보기 쉽게 작성하세요.
+
+[감싸는 구조(컨테이너) 블록 및 중첩 작성 필수 지침]
+1. "repeat_basic" 처럼 내부에 다른 블록을 담는 감싸는 구조(container) 블록은 반드시 \`statements\` 필드에 2차원 배열 형태로 자식 블록 스레드를 넣어야 합니다 (예: \`statements: [[ childBlock1, childBlock2 ]]\`).
+2. statements가 없거나 빈 배열이면 텅 빈 반복문이 되어 캔버스에서 아무런 동작도 하지 않습니다! 반복문 안에 블록을 넣어야 하는 요청이 들어오면 반드시 statements 내부에 자식 블록들을 넣으세요.
 
 [엄격한 블록 스펙 및 스레드 시작 규칙]
 1. 모든 블록 스레드 배열의 첫 번째 블록은 반드시 시작 이벤트 블록인 "when_run_button_click" 이어야 합니다!
 2. "when_run_button_click": params는 반드시 빈 배열 [] 이어야 함 (params: []).
-3. "move_direction": params는 정확히 1개(이동 거리 숫자)만 가져야 함 (params: [{ "type": "number", "params": [10] }]). 절대 방향 문자열이나 2번째 인자를 넣지 마세요!
-4. "rotate_by_angle": params는 정확히 1개 (params: [{ "type": "number", "params": [90] }]).
-5. "dialog_time": params는 정확히 2개 (말할 내용 문자열, 시간 숫자).
-6. "dialog": params는 정확히 1개 (말할 내용 문자열).
-7. "repeat_basic": params는 정확히 1개 (반복 횟수 숫자).
-8. 모든 파라미터는 중첩 객체 형태로 작성해야 합니다 (예: { "type": "number", "params": [10] }).
+3. "ask_and_wait": params는 정확히 1개 (질문 텍스트). (예: { "type": "ask_and_wait", "params": [{ "type": "text", "params": ["입금할 금액을 입력하세요:"] }] })
+4. "get_canvas_input_value": params는 빈 배열 [] 이어야 함 (params: []). 계산이나 변수 정하기 인자로 사용함.
+5. "move_direction": params는 정확히 1개(이동 거리 숫자).
+6. "rotate_by_angle": params는 정확히 1개.
+7. "dialog_time": params는 정확히 2개 (말할 내용, 시간 숫자).
+8. "dialog": params는 정확히 1개 (말할 내용).
+9. "repeat_basic": params는 정확히 1개 (반복 횟수 숫자). 반드시 statements 내부에 반복 실행할 블록들을 배열로 포함해야 합니다.
+10. 모든 파라미터는 중첩 객체 형태로 작성해야 합니다 (예: { "type": "number", "params": [10] }).
+
+[code_json 작성 필수 예시 - 반복문 및 입출력 중첩 구조]
+"저금통에 돈을 입금하고 합계를 출력하는 프로그램"과 같이 반복이나 입출력이 필요한 요청에는 반드시 다음과 같이 repeat_basic의 statements 안에 ask_and_wait, set_variable, dialog 블록을 올바르게 중첩한 2차원 배열을 반환하세요:
+[
+  [
+    { "type": "when_run_button_click", "params": [] },
+    {
+      "type": "repeat_basic",
+      "params": [{ "type": "number", "params": [10] }],
+      "statements": [
+        [
+          {
+            "type": "ask_and_wait",
+            "params": [{ "type": "text", "params": ["입금할 금액을 입력하세요:"] }]
+          },
+          {
+            "type": "set_variable",
+            "params": [
+              "money",
+              {
+                "type": "calc_plus",
+                "params": [
+                  { "type": "get_variable", "params": ["money"] },
+                  { "type": "get_canvas_input_value", "params": [] }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "dialog",
+            "params": [
+              { "type": "get_variable", "params": ["money"] }
+            ]
+          }
+        ]
+      ]
+    }
+  ]
+]
+
 유해한 비속어나 코딩과 완전히 무관한 질문이 들어오면 정중하게 거부하는 텍스트만 전달하세요.`;
 
             // Build sanitized multi-turn messages array from history + current prompt
