@@ -1,4 +1,3 @@
-import EntryServer from 'entry-hw-server';
 import { app } from 'electron';
 import CommonUtils from '../commonUtils';
 import HardwareModuleManager from './hardwareModuleManager';
@@ -15,6 +14,7 @@ class ServerProcessManager {
             remoteModuleUrl: global.sharedObject.remoteModuleResourceUrl,
             localModulePath: path.resolve(app.getAppPath(), 'modules'),
         });
+        const EntryServer = require('entry-hw-server').default;
         this.childProcess = new EntryServer({
             http: true,
             handleModuleListRequest: async () => {
