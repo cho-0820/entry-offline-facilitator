@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { connect } from 'react-redux';
 import Workspace from './workspace';
 import ModeSelectModal from './modeSelectModal';
+import StudentLoginModal from './StudentLoginModal';
 import './index.scss';
 import { IStoreState } from '../store/modules';
 import { IMapStateToProps } from '../store';
@@ -10,12 +11,34 @@ const Script = ({ children }: { children: any }) => (
     <script dangerouslySetInnerHTML={{ __html: `(${children.toString()})();` }}/>
 );
 
+// Returns true if running in web browser (not Electron IPC)
+const isWebEnvironment = () => {
+    return !(window as any).ipcInvoke || (window as any).ipcInvoke.isMock === true;
+};
+
 interface IProps extends IReduxState {
 
 }
 
 const IndexComponent: React.FC<IProps> = (props) => {
     const { mode } = props;
+
+    // Web login state: check sessionStorage on first render
+    const [studentCode, setStudentCode] = useState<string | null>(() => {
+        if (isWebEnvironment()) {
+            return sessionStorage.getItem('student_code');
+        }
+        return 'electron_skip'; // Electron: skip login
+    });
+
+    const handleLoginSuccess = (code: string, nickname: string, classroomName: string) => {
+        setStudentCode(code);
+    };
+
+    // Web environment and no student login yet → show login modal
+    if (!studentCode) {
+        return <StudentLoginModal onLoginSuccess={handleLoginSuccess} />;
+    }
 
     return (
         <div>

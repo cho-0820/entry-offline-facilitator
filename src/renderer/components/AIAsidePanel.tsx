@@ -949,6 +949,23 @@ export const AIAsidePanel: React.FC = () => {
                     <strong style={{ fontSize: '13px', color: '#212529' }}>
                         AI 협력 공간
                     </strong>
+                    {(() => {
+                        const nickname = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('nickname') : null;
+                        if (!nickname) return null;
+                        return (
+                            <span style={{
+                                fontSize: '11px',
+                                color: '#0056b3',
+                                backgroundColor: '#cce5ff',
+                                padding: '2px 7px',
+                                borderRadius: '10px',
+                                fontWeight: 'bold',
+                                marginLeft: '4px',
+                            }}>
+                                {nickname}님 👋
+                            </span>
+                        );
+                    })()}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <button
