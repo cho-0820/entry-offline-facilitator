@@ -174,10 +174,35 @@ export default class {
     }
 
     static getAnthropicApiKeyInfo() {
-        return ipcInvoke<{ exists: boolean; maskedKey: string }>('getAnthropicApiKeyInfo');
+        if (window.ipcInvoke && !(window.ipcInvoke as any).isMock) {
+            return window.ipcInvoke<{ exists: boolean; maskedKey: string }>('getAnthropicApiKeyInfo');
+        }
+        return Promise.resolve({ exists: false, maskedKey: '' });
     }
 
     static callCodeAssistantApi(prompt: string, history: Array<{ role: 'user' | 'assistant'; content: string }> = []) {
-        return ipcInvoke<{ text: string; code_json?: any }>('callCodeAssistantApi', prompt, history);
+        if (window.ipcInvoke && !(window.ipcInvoke as any).isMock) {
+            return window.ipcInvoke<{ text: string; code_json?: any }>('callCodeAssistantApi', prompt, history);
+        }
+        const url = process.env.FACILITATOR_API_URL || 'https://facilitator-api.vercel.app/api/chat';
+        return fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                prompt,
+                history,
+            }),
+        })
+            .then((response) => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then((data) => {
+                return data as { text: string; code_json?: any };
+            });
     }
 }

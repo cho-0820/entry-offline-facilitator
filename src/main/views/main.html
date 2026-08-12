@@ -2,6 +2,56 @@
 <html lang="">
     <head>
         <meta charset="utf-8" />
+        <script>
+            // Web environment mocks
+            if (typeof window.onPageLoaded === 'undefined') {
+                window.onPageLoaded = function(callback) {
+                    setTimeout(callback, 100);
+                };
+            }
+            if (typeof window.getSharedObject === 'undefined') {
+                window.getSharedObject = function() {
+                    return { file: undefined };
+                };
+            }
+            if (typeof window.isOsx === 'undefined') {
+                window.isOsx = false;
+            }
+            if (typeof window.getLang === 'undefined') {
+                window.getLang = function(key) {
+                    var lang = window.Lang || {};
+                    var parts = key.split('.');
+                    var current = lang;
+                    for (var i = 0; i < parts.length; i++) {
+                        if (current && current[parts[i]] !== undefined) {
+                            current = current[parts[i]];
+                        } else {
+                            return key;
+                        }
+                    }
+                    return current;
+                };
+            }
+            if (typeof window.onLoadProjectFromMain === 'undefined') {
+                window.onLoadProjectFromMain = function() {};
+            }
+            if (typeof window.isOffline === 'undefined') {
+                window.isOffline = false;
+            }
+            if (typeof window.initNativeMenu === 'undefined') {
+                window.initNativeMenu = function() {};
+            }
+            if (typeof window.ipcInvoke === 'undefined') {
+                window.ipcInvoke = function(channel) {
+                    console.log('[WebMock] ipcInvoke called for channel:', channel);
+                    if (channel === 'checkUpdate') {
+                        return Promise.resolve(['2.1.37', { hasNewVersion: false, recentVersion: '2.1.37' }]);
+                    }
+                    return Promise.resolve();
+                };
+                window.ipcInvoke.isMock = true;
+            }
+        </script>
         <link rel="stylesheet" href="../../renderer/resources/modal/app.css" />
         <link
             rel="stylesheet"
