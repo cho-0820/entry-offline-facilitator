@@ -76,11 +76,49 @@ const renderMarkdown = (text: string) => {
  *   3. Each block gets Entry.generateHash() id before insertion
  *   4. Actual success is verified by threadCount delta on board.code
  */
-function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCount: number; error?: string } {
+function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCount: number; error?: string; isConditionFallback?: boolean } {
     try {
         const entryObj = (window as any).Entry;
         if (!entryObj) {
             return { success: false, insertedCount: 0, error: 'Entry 객체를 찾을 수 없습니다.' };
+        }
+
+        // ── 조건 분기(_if, if_else) 포함 여부 검사 헬퍼 ───────────────────
+        const checkHasCondition = (block: any): boolean => {
+            if (!block || typeof block !== 'object') return false;
+            if (block.type === '_if' || block.type === 'if_else') return true;
+            if (Array.isArray(block.params)) {
+                for (const p of block.params) {
+                    if (checkHasCondition(p)) return true;
+                }
+            }
+            if (Array.isArray(block.statements)) {
+                for (const branch of block.statements) {
+                    if (Array.isArray(branch)) {
+                        for (const child of branch) {
+                            if (checkHasCondition(child)) return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        };
+
+        const hasCondition = Array.isArray(codeJson) && codeJson.some((th: any) => {
+            if (Array.isArray(th)) {
+                return th.some(checkHasCondition);
+            }
+            return checkHasCondition(th);
+        });
+
+        if (hasCondition) {
+            console.log('[Phase10][CanvasInsert] Condition block detected. Skipping automatic canvas insertion as per user instructions.');
+            return {
+                success: false,
+                insertedCount: 0,
+                isConditionFallback: true,
+                error: '이 코드는 조건문이 포함되어 있어 자동으로 넣기 어려워요. 아래 설명을 참고해서 블록 메뉴에서 직접 조립해볼까요?'
+            };
         }
 
         // ── 전제조건 1: 씬에 오브젝트가 있는지 확인 ─────────────────────────
@@ -153,34 +191,298 @@ function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCo
 
         console.log(`[Phase9] Normalized to ${threads.length} thread(s). Format was: ${Array.isArray(codeJson[0]) ? 'nested [[...]]' : 'flat [...]'}`);
 
-        // ── id 주입 + 좌표 설정 + 삽입 ──────────────────────────────────────
+        // ── 변수 생성 헬퍼: Entry.do('variableContainerAddVariable', ...) 대신
+        //    variableContainer.addVariable() 직접 호출
+        //    (Entry.do의 커맨드 이름 오타/누락이 함수 생성 등 엉뚱한 동작을 유발하므로 우회)
+        const createEntryVariable = (varName: string): boolean => {
+            try {
+                const vc = entryObj.variableContainer;
+                if (!vc) return false;
+                // 이미 있으면 스킵
+                const existing = vc.getVariable ? vc.getVariable(varName) : null;
+                if (existing) return false;
+
+                // Entry.Variable 인스턴스 생성
+                const id = entryObj.generateHash ? entryObj.generateHash() : Math.random().toString(36).slice(2, 10);
+                const varData = { id, name: varName, value: 0, type: 'variable', object: null, visible: true };
+                let variable: any = null;
+                if (entryObj.Variable) {
+                    variable = new entryObj.Variable(varData);
+                } else if (typeof Entry !== 'undefined' && (Entry as any).Variable) {
+                    variable = new (Entry as any).Variable(varData);
+                }
+                if (!variable) return false;
+
+                // variableContainer.addVariable() 직접 호출
+                if (vc.addVariable) {
+                    vc.addVariable(variable);
+                    if (vc.updateList) vc.updateList();
+                    console.log(`[VariableCreate] Created variable: "${varName}" (id: ${id})`);
+                    return true;
+                }
+                return false;
+            } catch (e) {
+                console.warn(`[VariableCreate] Failed to create variable "${varName}":`, e);
+                return false;
+            }
+        };
+
+        // ── COMMAND_TYPES 검증 포함 안전한 Entry.do wrapper ────────────────
+        //    존재하지 않는 커맨드 이름 사용 시 즉시 에러를 남기고 중단합니다.
+        const VALID_ENTRY_COMMANDS = new Set([
+            // COMMAND_TYPES_ALWAYS (block, scene, playground)
+            'sceneAdd', 'sceneRemove', 'sceneRename', 'sceneSort', 'sceneSelect',
+            'addThread', 'destroyThread', 'destroyBlock', 'recoverBlock', 'insertBlock',
+            'separateBlock', 'moveBlock', 'cloneBlock', 'uncloneBlock', 'scrollBoard',
+            'setFieldValue', 'selectBlockMenu', 'destroyBlockBelow', 'destroyThreads',
+            'addThreads', 'recoverBlockBelow', 'addThreadFromBlockMenu', 'insertBlockFromBlockMenu',
+            'moveBlockFromBlockMenu', 'separateBlockForDestroy', 'moveBlockForDestroy',
+            'insertBlockFromBlockMenuFollowSeparate', 'insertBlockFollowSeparate',
+            'separateBlockByCommand',
+            // Object
+            'selectObject', 'objectEditButtonClick', 'objectAddPicture', 'objectRemovePicture',
+            'objectAddSound', 'objectRemoveSound', 'objectNameEdit', 'addObject', 'removeObject',
+            'objectUpdatePosX', 'objectUpdatePosY', 'objectUpdateSize', 'objectUpdateRotationValue',
+            'objectUpdateDirectionValue', 'objectUpdateRotateMethod', 'entitySetModel',
+            'objectAddExpansionBlocks', 'objectRemoveExpansionBlocks', 'objectReorder',
+            'objectAddAIUtilizeBlocks', 'objectRemoveAIUtilizeBlocks',
+            'objectAddHardwareLiteBlocks', 'objectRemoveHardwareLiteBlocks',
+            // Variable
+            'variableContainerAddVariable', 'variableContainerRemoveVariable',
+            'variableContainerAddList', 'variableContainerRemoveList',
+            'variableContainerAddMessage', 'variableContainerRemoveMessage',
+            'variableContainerSelectFilter', 'variableContainerClickVariableAddButton',
+            'variableContainerClickListAddButton', 'variableContainerClickMessageAddButton',
+            'variableAddSetName', 'variableAddSetScope', 'variableAddSetCloud',
+            'variableSetVisibility', 'variableSetDefaultValue', 'variableSetSlidable',
+            'variableSetMinValue', 'variableSetMaxValue', 'variableSetName',
+            'listAddSetName', 'listAddSetScope', 'listAddSetCloud',
+            'listSetVisibility', 'listChangeLength', 'listSetDefaultValue', 'listSetName',
+            'messageSetName', 'setMessageEditable', 'setVariableEditable', 'setListEditable',
+            // Function
+            'funcEditStart', 'funcEditEnd', 'funcRemove', 'funcCreate', 'funcChangeType',
+            // Comment
+            'createComment', 'removeComment', 'showAllComment', 'hideAllComment',
+            'moveComment', 'toggleComment', 'cloneComment', 'uncloneComment',
+            'separateComment', 'connectComment', 'writeComment',
+            // Misc
+            'do', 'undo', 'redo', 'dismissModal',
+            'toggleRun', 'toggleStop', 'containerSelectObject', 'addObjectButtonClick',
+            'playgroundChangeViewMode',
+            'dataTableAddSource', 'dataTableRemoveSource',
+        ]);
+
+        const safeEntryDo = (commandName: string, ...args: any[]): any => {
+            if (!VALID_ENTRY_COMMANDS.has(commandName)) {
+                console.error(
+                    `[SafeEntryDo] ❌ Invalid Entry.do command: "${commandName}" — ` +
+                    `이 이름은 COMMAND_TYPES에 없습니다. 삽입을 중단합니다.\n` +
+                    `유효한 커맨드 예: addThread, variableContainerAddVariable, funcRemove 등`
+                );
+                throw new Error(`[SafeEntryDo] Invalid command: "${commandName}"`);
+            }
+            return entryObj.do(commandName, ...args);
+        };
+
+        // ── 변수 자동 생성: code_json 내 set_variable / get_variable 변수 사전 등록 ────
+        if (entryObj.variableContainer) {
+            const collectVariables = (block: any, varSet: Set<string>) => {
+                if (!block || typeof block !== 'object') return;
+                if ((block.type === 'get_variable' || block.type === 'set_variable') && Array.isArray(block.params) && block.params[0]) {
+                    const varName = block.params[0];
+                    if (typeof varName === 'string' && varName.trim().length > 0) {
+                        varSet.add(varName);
+                    }
+                }
+                if (Array.isArray(block.params)) {
+                    block.params.forEach((p: any) => collectVariables(p, varSet));
+                }
+                if (Array.isArray(block.statements)) {
+                    block.statements.forEach((branch: any) => {
+                        if (Array.isArray(branch)) {
+                            branch.forEach((b: any) => collectVariables(b, varSet));
+                        }
+                    });
+                }
+            };
+
+            const usedVars = new Set<string>();
+            threads.forEach((th: any[]) => {
+                if (Array.isArray(th)) {
+                    th.forEach((b: any) => collectVariables(b, usedVars));
+                }
+            });
+
+            usedVars.forEach((varName: string) => {
+                createEntryVariable(varName);
+            });
+        }
+
+
+        // ── id 주입 + 좌표 설정 + Entry.js 파라미터 규격 자동 정규화(null 패딩) ────
         const generateId = entryObj.generateHash
             ? () => entryObj.generateHash()
             : () => Math.random().toString(36).slice(2, 10);
+
+        // ── [object Object] 방어: dialog/dialog_time VALUE 슬롯에 연산 블록이 들어오면
+        //    자동으로 set_variable(_tmp_calc_N, 연산블록) + dialog(get_variable(_tmp_calc_N))
+        //    으로 분리해서 삽입 전에 스레드를 재구성합니다.
+        const CALC_BLOCK_TYPES = new Set(['calc_plus', 'calc_minus', 'calc_times', 'calc_divide']);
+        let tmpCalcCounter = 0;
+
+        function preprocessThread(blockList: any[]): any[] {
+            const result: any[] = [];
+            for (const block of blockList) {
+                if (!block || typeof block !== 'object') {
+                    result.push(block);
+                    continue;
+                }
+                // dialog / dialog_time VALUE 슬롯에 calc 블록이 직접 들어온 경우 분리
+                if ((block.type === 'dialog' || block.type === 'dialog_time') && Array.isArray(block.params)) {
+                    // VALUE 슬롯: dialog의 paramsKeyMap.VALUE=0, dialog_time의 paramsKeyMap.VALUE=0
+                    const firstParam = block.params[0];
+                    if (firstParam && typeof firstParam === 'object' && CALC_BLOCK_TYPES.has(firstParam.type)) {
+                        const tmpVarName = `_tmp_calc_${tmpCalcCounter++}`;
+                        // 임시 변수 자동 생성
+                        createEntryVariable(tmpVarName);
+                        // set_variable(_tmp_calc_N, 연산블록) 삽입
+                        const setVarBlock = {
+                            type: 'set_variable',
+                            params: [tmpVarName, firstParam],
+                        };
+                        result.push(setVarBlock);
+                        // dialog의 VALUE를 get_variable(_tmp_calc_N)으로 교체
+                        const newDialogBlock = JSON.parse(JSON.stringify(block));
+                        newDialogBlock.params = [{ type: 'get_variable', params: [tmpVarName] }];
+                        // 나머지 params (option 등) 보존
+                        for (let pi = 1; pi < block.params.length; pi++) {
+                            if (block.params[pi] !== undefined) newDialogBlock.params[pi] = block.params[pi];
+                        }
+                        console.log(`[Phase10][CalcSplit] dialog VALUE split: "${firstParam.type}" → set_variable("${tmpVarName}") + dialog(get_variable("${tmpVarName}"))`);
+                        result.push(newDialogBlock);
+                        continue;
+                    }
+                }
+                // statements가 있는 컨테이너 블록은 재귀 전처리
+                if (block.statements && Array.isArray(block.statements)) {
+                    const newBlock = JSON.parse(JSON.stringify(block));
+                    newBlock.statements = block.statements.map((branch: any) => {
+                        if (!Array.isArray(branch)) return branch;
+                        return preprocessThread(branch);
+                    });
+                    result.push(newBlock);
+                    continue;
+                }
+                result.push(block);
+            }
+            return result;
+        }
+
+        function normalizeBlock(block: any, isRoot: boolean, startX: number, startY: number): any {
+            if (!block || typeof block !== 'object') return block;
+
+            const normalized = JSON.parse(JSON.stringify(block));
+            if (!normalized.id) normalized.id = generateId();
+
+            if (isRoot) {
+                normalized.x = startX;
+                normalized.y = startY;
+            }
+
+            // 1. statements 하위 블록 재귀적 정규화
+            if (normalized.statements && Array.isArray(normalized.statements)) {
+                normalized.statements = normalized.statements.map((branch: any) => {
+                    if (!Array.isArray(branch)) return branch;
+                    return branch.map((child: any) => normalizeBlock(child, false, 0, 0));
+                });
+            }
+
+            // 2. params 하위 블록/값 재귀적 정규화 (null/undefined 제외 실질 입력 추출)
+            const realInputs: any[] = [];
+            if (normalized.params && Array.isArray(normalized.params)) {
+                normalized.params.forEach((p: any) => {
+                    if (p !== null && p !== undefined) {
+                        if (typeof p === 'object') {
+                            realInputs.push(normalizeBlock(p, false, 0, 0));
+                        } else {
+                            realInputs.push(p);
+                        }
+                    }
+                });
+            }
+
+            // 2-1. get_variable / set_variable 변수 ID 바인딩
+            if ((normalized.type === 'get_variable' || normalized.type === 'set_variable') && realInputs.length > 0 && typeof realInputs[0] === 'string') {
+                const varName = realInputs[0];
+                const vc = entryObj.variableContainer;
+                const varObj = vc && vc.getVariableByName
+                    ? vc.getVariableByName(varName)
+                    : null;
+                if (varObj && varObj.id_) {
+                    realInputs[0] = varObj.id_;
+                    console.log(`[VariableBinding] Successfully bound variable "${varName}" to ID "${varObj.id_}"`);
+                } else {
+                    console.warn(`[VariableBinding] ⚠️ 변수 "${varName}"를 찾을 수 없어 이름 그대로 삽입됩니다. (getVariableByName returned null or missing id_)`);
+                }
+            }
+
+            // 3. Entry.block 스펙 참조하여 인디케이터/텍스트 슬롯 null 패딩 매핑
+            const entryDef = entryObj.block ? entryObj.block[normalized.type] : null;
+            if (entryDef && entryDef.params && Array.isArray(entryDef.params)) {
+                const expectedCount = entryDef.params.length;
+                const keyMap = entryDef.paramsKeyMap || {};
+                const padded = new Array(expectedCount).fill(null);
+
+                const keys = Object.keys(keyMap);
+                if (keys.length > 0) {
+                    keys.forEach((k: string, idx: number) => {
+                        const targetIdx = keyMap[k];
+                        if (idx < realInputs.length) {
+                            padded[targetIdx] = realInputs[idx];
+                        }
+                    });
+                } else {
+                    let inputIdx = 0;
+                    for (let i = 0; i < expectedCount; i++) {
+                        const pDef = entryDef.params[i];
+                        if (pDef && (pDef.type === 'Block' || pDef.type === 'TextInput' || pDef.type === 'Dropdown' || pDef.type === 'DropdownDynamic')) {
+                            if (inputIdx < realInputs.length) {
+                                padded[i] = realInputs[inputIdx++];
+                            }
+                        }
+                    }
+                }
+
+                // dialog 블록의 옵션 기본값 보정 (말하기 옵션 "speak")
+                if (normalized.type === 'dialog' && expectedCount >= 2 && padded[1] === null) {
+                    padded[1] = 'speak';
+                }
+
+                normalized.params = padded;
+            } else {
+                normalized.params = realInputs;
+            }
+
+            return normalized;
+        }
 
         let attemptedCount = 0;
         for (const threadData of threads) {
             if (!Array.isArray(threadData) || threadData.length === 0) continue;
 
-            // Deep-copy to avoid mutating the original
-            const threadCopy: any[] = JSON.parse(JSON.stringify(threadData));
+            // dialog VALUE에 calc 블록이 직접 있으면 변수 분리 전처리
+            const preprocessedThread = preprocessThread(threadData);
 
-            // 첫 번째 블록에 좌표 설정
-            const firstBlock = threadCopy[0];
-            if (firstBlock) {
-                firstBlock.x = 50;
-                firstBlock.y = maxY === 40 ? 50 : maxY + 120;
-                maxY = firstBlock.y;
-            }
-
-            // 모든 블록에 id 주입 (공식 패턴: entry.js:635068)
-            threadCopy.forEach((block: any) => {
-                if (!block.id) {
-                    block.id = generateId();
-                }
+            const nextY = maxY === 40 ? 50 : maxY + 120;
+            const preparedThread = preprocessedThread.map((block: any, bIdx: number) => {
+                return normalizeBlock(block, bIdx === 0, 50, nextY);
             });
 
-            entryObj.do('addThread', threadCopy);
+            if (preparedThread[0]) {
+                maxY = preparedThread[0].y;
+            }
+
+            safeEntryDo('addThread', preparedThread);
             attemptedCount++;
         }
 
@@ -492,11 +794,14 @@ export const AIAsidePanel: React.FC = () => {
                         timestamp: apiNowTime,
                     });
                 } else {
+                    const fallbackText = insertRes.isConditionFallback
+                        ? (insertRes.error || '')
+                        : `코드를 캔버스에 자동으로 추가하는 중에 문제가 생겼어요 (${insertRes.error || ''}). 필요 시 오른쪽 블록 메뉴에서 직접 만들어볼까요?`;
                     extraCards.push({
                         id: `insert_failed_${Date.now()}`,
                         sender: 'facilitator',
                         title: '🧭 AI 퍼실리테이터 - 안내',
-                        text: `코드를 캔버스에 자동으로 추가하는 중에 문제가 생겼어요 (${insertRes.error}). 필요 시 오른쪽 블록 메뉴에서 직접 만들어볼까요?`,
+                        text: fallbackText,
                         timestamp: apiNowTime,
                     });
                 }
