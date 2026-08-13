@@ -197,12 +197,7 @@ export default class {
         if (!window.ipcInvoke || (window.ipcInvoke as any).isMock) {
             return Promise.resolve(data as IEntry.Picture);
         }
-        return ipcInvoke<IEntry.Picture>('importPictureFromCanvas', data);
-        // Web environment: directly return the canvas data as a picture object
-        if (window.ipcInvoke && (window.ipcInvoke as any).isMock) {
-            return Promise.resolve(data as IEntry.Picture);
-        }
-        return ipcInvoke<IEntry.Picture>('importPictureFromCanvas', data);
+        // Electron environment
         return ipcInvoke<IEntry.Picture>('importPictureFromCanvas', data);
     }
 
@@ -250,11 +245,6 @@ export default class {
         );
     }
 
-    /**
-     * 업로드 파일 경로를 temp 로 가져온다.
-     * @param {Array!}filePaths 이미지 파일 경로
-     * @return {Promise<Object>} 신규생성된 오브젝트 메타데이터
-     */
     static importPictures(filePaths: string[]) {
         // Web environment: use a hidden file input to select pictures and return them as data URLs
         if (!window.ipcInvoke || (window.ipcInvoke as any).isMock) {
@@ -282,34 +272,7 @@ export default class {
                 input.click();
             });
         }
-        return ipcInvoke<IEntry.Picture[]>('importPictures', filePaths);
-        // Web environment: use a hidden file input to select pictures and return them as data URLs
-        if (window.ipcInvoke && (window.ipcInvoke as any).isMock) {
-            return new Promise<IEntry.Picture[]>((resolve) => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'image/*';
-                input.multiple = true;
-                input.onchange = async () => {
-                    const files = Array.from(input.files || []);
-                    const pictures = await Promise.all(
-                        files.map(async (file) => {
-                            const dataUrl = await new Promise<string>((res) => {
-                                const reader = new FileReader();
-                                reader.onload = () => res(reader.result as string);
-                                reader.readAsDataURL(file);
-                            });
-                            const ext = file.name.includes('.') ? '.' + file.name.split('.').pop() : '';
-                            const filename = file.name.replace(/\.[^/.]+$/, '');
-                            return { filename, ext, fileurl: dataUrl } as IEntry.Picture;
-                        })
-                    );
-                    resolve(pictures);
-                };
-                input.click();
-            });
-        }
-        return ipcInvoke<IEntry.Picture[]>('importPictures', filePaths);
+        // Electron environment
         return ipcInvoke<IEntry.Picture[]>('importPictures', filePaths);
     }
 
