@@ -28,3 +28,8 @@ visualizations/
 powershell.cmd
 powershell.bat
 src/renderer/@types/
+dist_web/
+scratch/
+.vercel/
+test_puppeteer_direct.js
+
