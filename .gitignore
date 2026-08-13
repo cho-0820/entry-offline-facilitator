@@ -27,3 +27,4 @@ intermediate_results/
 visualizations/
 powershell.cmd
 powershell.bat
+src/renderer/@types/
