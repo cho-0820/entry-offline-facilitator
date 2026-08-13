@@ -42,6 +42,23 @@ export default class {
      * @return {Promise<Object>} undefined || Entry Project
      */
     static async getSavedProject() {
+        // Web environment: priority check for saved project on server
+        if (!(window as any).ipcInvoke || (window as any).ipcInvoke.isMock === true) {
+            try {
+                const webProject = await IpcRendererHelper.loadProject();
+                if (webProject) {
+                    console.log('[WebLoad] Loaded recent project from server for workspace init.');
+                    StorageManager.clearSavedProject();
+                    return webProject;
+                }
+            } catch (e) {
+                console.warn('[WebLoad] Web project load failed during init:', e);
+            }
+            await RendererUtils.clearTempProject();
+            return undefined;
+        }
+
+        // Electron environment:
         const sharedObject = RendererUtils.getSharedObject();
         const { file } = sharedObject;
         const reloadProject = StorageManager.loadTempProject();
@@ -77,19 +94,6 @@ export default class {
             } finally {
                 await RendererUtils.clearTempProject({ saveTemp: confirm });
             }
-        } else if (!(window as any).ipcInvoke || (window as any).ipcInvoke.isMock === true) {
-            // Web environment: check for saved project from server
-            try {
-                const webProject = await IpcRendererHelper.loadProject();
-                if (webProject) {
-                    console.log('[WebLoad] Loaded recent project from server for workspace init.');
-                    return webProject;
-                }
-            } catch (e) {
-                console.warn('[WebLoad] Web project load failed during init:', e);
-            }
-            await RendererUtils.clearTempProject();
-            return undefined;
         } else {
             await RendererUtils.clearTempProject();
             return undefined;

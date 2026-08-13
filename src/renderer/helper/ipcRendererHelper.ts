@@ -217,8 +217,27 @@ export default class {
         return ipcInvoke<IEntry.Object[]>('importObjects', filePaths);
     }
 
-    static importObjectsFromResource(objects: any) {
-        return ipcInvoke<IEntry.Object[]>('importObjectsFromResource', objects);
+    static async importObjectsFromResource(objects: any) {
+        if (window.ipcInvoke && !(window.ipcInvoke as any).isMock) {
+            return ipcInvoke<IEntry.Object[]>('importObjectsFromResource', objects);
+        }
+        if (!objects || !Array.isArray(objects)) return [];
+
+        return Promise.all(
+            objects.map(async (object: any) => {
+                const pictures = object.pictures || [];
+                const sounds = object.sounds || [];
+
+                const processedPictures = await this.importPicturesFromResource(pictures);
+                const processedSounds = await this.importSoundsFromResource(sounds);
+
+                return {
+                    ...object,
+                    pictures: processedPictures,
+                    sounds: processedSounds,
+                };
+            })
+        );
     }
 
     /**
@@ -235,16 +254,48 @@ export default class {
      * @param {Array}pictures DB 에서 가져온 이미지 정보 오브젝트
      * @return {Promise<Object>} 파일명이 변경된 이미지 정보 오브젝트
      */
-    static importPicturesFromResource(pictures: string[]) {
-        return ipcInvoke<IEntry.Picture[]>('importPicturesFromResource', pictures);
+    static async importPicturesFromResource(pictures: any[]) {
+        if (window.ipcInvoke && !(window.ipcInvoke as any).isMock) {
+            return ipcInvoke<IEntry.Picture[]>('importPicturesFromResource', pictures);
+        }
+        if (!pictures || !Array.isArray(pictures)) return [];
+
+        return Promise.all(
+            pictures.map(async (picture: any) => {
+                const filename = picture.filename;
+                if (!filename) return picture;
+                const ext = picture.ext || (picture.imageType === 'svg' ? '.svg' : '.png');
+                const subDir = `${filename.substr(0, 2)}/${filename.substr(2, 2)}`;
+                const imagePath = `../../renderer/resources/uploads/${subDir}/image/${filename}${ext}`;
+
+                return {
+                    ...picture,
+                    fileurl: imagePath,
+                };
+            })
+        );
     }
 
     static importSounds(filePath: string[]) {
         return ipcInvoke<IEntry.Sound[]>('importSounds', filePath);
     }
 
-    static importSoundsFromResource(sounds: any[]) {
-        return ipcInvoke<IEntry.Sound[]>('importSoundsFromResource', sounds);
+    static async importSoundsFromResource(sounds: any[]) {
+        if (window.ipcInvoke && !(window.ipcInvoke as any).isMock) {
+            return ipcInvoke<IEntry.Sound[]>('importSoundsFromResource', sounds);
+        }
+        if (!sounds || !Array.isArray(sounds)) return [];
+
+        return Promise.all(
+            sounds.map(async (sound: any) => {
+                const path = await this.getExistSoundFilePath(sound);
+                return {
+                    ...sound,
+                    fileurl: path,
+                    path: path,
+                };
+            })
+        );
     }
 
     static createTableInfo(filePaths: string[]) {
@@ -299,8 +350,26 @@ export default class {
         return ipcInvoke('saveSoundBuffer', buffer, prevFileUrl);
     }
 
-    static getExistSoundFilePath(sound: { filename: string; ext?: string }) {
-        return ipcInvoke('getExistSoundFilePath', sound);
+    static async getExistSoundFilePath(sound: { filename?: string; ext?: string; fileurl?: string; path?: string }) {
+        if (window.ipcInvoke && !(window.ipcInvoke as any).isMock) {
+            return ipcInvoke('getExistSoundFilePath', sound);
+        }
+        if (!sound) return '';
+        if (sound.fileurl) return sound.fileurl;
+        if (sound.path) return sound.path;
+
+        const filename = sound.filename;
+        if (!filename) return '';
+        const ext = sound.ext || '.mp3';
+        const subDir = `${filename.substr(0, 2)}/${filename.substr(2, 2)}`;
+        const soundPath1 = `../../renderer/resources/uploads/${subDir}/sound/${filename}${ext}`;
+        const soundPath2 = `../../renderer/resources/uploads/${subDir}/${filename}${ext}`;
+
+        try {
+            const res = await fetch(soundPath1, { method: 'HEAD' });
+            if (res.ok) return soundPath1;
+        } catch (_) {}
+        return soundPath2;
     }
 
     static getAnthropicApiKeyInfo() {
