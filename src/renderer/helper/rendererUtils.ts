@@ -93,15 +93,26 @@ export default class {
     }
 
     static showOpenDialog(option: Electron.OpenDialogOptions) {
+        if (!window.dialog || (window.ipcInvoke && (window.ipcInvoke as any).isMock)) {
+            return Promise.resolve({ canceled: true, filePaths: [] });
+        }
         return dialog.showOpenDialog(option);
     }
 
     static async showSaveDialogAsync(option: Electron.SaveDialogOptions) {
+        if (!window.dialog || (window.ipcInvoke && (window.ipcInvoke as any).isMock)) {
+            return option.defaultPath || 'project.ent';
+        }
         const path = await dialog.showSaveDialog(option);
         return path.filePath;
     }
 
     static showSaveDialog(option: Electron.SaveDialogOptions, callback: (filePath: string | undefined) => void) {
+        if (!window.dialog || (window.ipcInvoke && (window.ipcInvoke as any).isMock)) {
+            const defaultPath = option.defaultPath || 'project.ent';
+            callback(defaultPath);
+            return;
+        }
         const path = dialog.showSaveDialogSync(option);
         callback(path);
     }

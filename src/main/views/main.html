@@ -41,6 +41,16 @@
             if (typeof window.initNativeMenu === 'undefined') {
                 window.initNativeMenu = function() {};
             }
+            if (typeof window.dialog === 'undefined') {
+                window.dialog = {
+                    showSaveDialogSync: function(options) {
+                        return (options && options.defaultPath) || 'project.ent';
+                    },
+                    showOpenDialog: function() {
+                        return Promise.resolve({ canceled: true, filePaths: [] });
+                    }
+                };
+            }
             if (typeof window.ipcInvoke === 'undefined') {
                 window.ipcInvoke = function(channel) {
                     console.log('[WebMock] ipcInvoke called for channel:', channel);

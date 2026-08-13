@@ -77,6 +77,19 @@ export default class {
             } finally {
                 await RendererUtils.clearTempProject({ saveTemp: confirm });
             }
+        } else if (!(window as any).ipcInvoke || (window as any).ipcInvoke.isMock === true) {
+            // Web environment: check for saved project from server
+            try {
+                const webProject = await IpcRendererHelper.loadProject();
+                if (webProject) {
+                    console.log('[WebLoad] Loaded recent project from server for workspace init.');
+                    return webProject;
+                }
+            } catch (e) {
+                console.warn('[WebLoad] Web project load failed during init:', e);
+            }
+            await RendererUtils.clearTempProject();
+            return undefined;
         } else {
             await RendererUtils.clearTempProject();
             return undefined;

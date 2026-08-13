@@ -10,17 +10,106 @@ const { ipcInvoke } = window;
  * nodejs lib 사용 혹은 main 에 통신이 한번이상 필요한 경우 이쪽에 둔다.
  */
 
-export default class {
-    static async loadProject(filePath: string) {
-        const project = await ipcInvoke<IEntry.Project>('loadProject', filePath);
-        if (project && (project as any).messages) {
-            (window as any).__ENTRY_LOADED_MESSAGES__ = (project as any).messages;
-            console.log('[Phase6] Loaded custom messages array from project:', (project as any).messages);
+// Helper to convert blob URLs in pictures/sounds to base64 data URLs for JSON storage
+async function serializeProjectForWeb(project: any): Promise<any> {
+    const projectCopy = JSON.parse(JSON.stringify(project));
+    if (projectCopy.objects && Array.isArray(projectCopy.objects)) {
+        for (const obj of projectCopy.objects) {
+            if (obj.sprite && obj.sprite.pictures) {
+                for (const pic of obj.sprite.pictures) {
+                    if (pic.fileurl && pic.fileurl.startsWith('blob:')) {
+                        try {
+                            const res = await fetch(pic.fileurl);
+                            const blob = await res.blob();
+                            const base64 = await new Promise<string>((resolve) => {
+                                const reader = new FileReader();
+                                reader.onloadend = () => resolve(reader.result as string);
+                                reader.readAsDataURL(blob);
+                            });
+                            pic.fileurl = base64;
+                        } catch (e) {
+                            console.warn('[WebSave] Failed to convert picture blob to base64:', e);
+                        }
+                    }
+                }
+            }
+            if (obj.sprite && obj.sprite.sounds) {
+                for (const snd of obj.sprite.sounds) {
+                    if (snd.fileurl && snd.fileurl.startsWith('blob:')) {
+                        try {
+                            const res = await fetch(snd.fileurl);
+                            const blob = await res.blob();
+                            const base64 = await new Promise<string>((resolve) => {
+                                const reader = new FileReader();
+                                reader.onloadend = () => resolve(reader.result as string);
+                                reader.readAsDataURL(blob);
+                            });
+                            snd.fileurl = base64;
+                        } catch (e) {
+                            console.warn('[WebSave] Failed to convert sound blob to base64:', e);
+                        }
+                    }
+                }
+            }
         }
-        return project;
+    }
+    return projectCopy;
+}
+
+export default class {
+    static async loadProject(filePath?: string) {
+        if (window.ipcInvoke && !(window.ipcInvoke as any).isMock) {
+            const project = await ipcInvoke<IEntry.Project>('loadProject', filePath!);
+            if (project && (project as any).messages) {
+                (window as any).__ENTRY_LOADED_MESSAGES__ = (project as any).messages;
+                console.log('[Phase6] Loaded custom messages array from project:', (project as any).messages);
+            }
+            return project;
+        }
+
+        // Web environment: GET /api/projects?student_code=...&include_data=true
+        const studentCode = sessionStorage.getItem('student_code');
+        if (!studentCode) {
+            console.warn('[WebLoad] No student_code in sessionStorage.');
+            return undefined;
+        }
+
+        const baseUrl = process.env.FACILITATOR_API_URL
+            ? `${process.env.FACILITATOR_API_URL.replace(/\/api\/chat$/, '')}/api/projects`
+            : 'https://facilitator-api.vercel.app/api/projects';
+
+        const url = `${baseUrl}?student_code=${encodeURIComponent(studentCode)}&include_data=true`;
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                console.warn(`[WebLoad] GET /api/projects failed (status ${response.status})`);
+                return undefined;
+            }
+
+            const data = await response.json();
+            const projects = data.projects;
+            if (!projects || projects.length === 0) {
+                console.log('[WebLoad] No saved projects found on server for student:', studentCode);
+                return undefined;
+            }
+
+            // Automatically load the most recent project (projects[0])
+            const recentProject = projects[0];
+            const projectData = recentProject.project_data;
+            if (projectData && (projectData as any).messages) {
+                (window as any).__ENTRY_LOADED_MESSAGES__ = (projectData as any).messages;
+                console.log('[Phase6-Web] Loaded custom messages array from web project:', (projectData as any).messages);
+            }
+            console.log('[WebLoad] Successfully loaded project from server:', recentProject.project_name);
+            return projectData;
+        } catch (e) {
+            console.error('[WebLoad] Error loading project from web API:', e);
+            return undefined;
+        }
     }
 
-    static saveProject(project: IEntry.Project, targetPath: string) {
+    static async saveProject(project: IEntry.Project, targetPath?: string) {
         // Phase 6: Save conversation messages ONLY if data collection consent is granted
         if (eventLogger.getIsDataCollectionEnabled()) {
             const aiMessages = (window as any).__ENTRY_AI_MESSAGES__ || [];
@@ -30,11 +119,52 @@ export default class {
             delete (project as any).messages;
             console.log('[Phase6] Saving project WITHOUT messages (consent=denied/false).');
         }
-        return ipcInvoke<void>('saveProject', project, targetPath);
+
+        if (window.ipcInvoke && !(window.ipcInvoke as any).isMock) {
+            return ipcInvoke<void>('saveProject', project, targetPath!);
+        }
+
+        // Web environment: POST /api/projects { student_code, project_name, project_data }
+        const studentCode = sessionStorage.getItem('student_code');
+        if (!studentCode) {
+            console.warn('[WebSave] No student_code in sessionStorage.');
+            return;
+        }
+
+        const projectName = (project as any).name || (targetPath ? targetPath.replace(/\.ent$/, '') : '마이 프로젝트');
+        const serializedData = await serializeProjectForWeb(project);
+
+        const baseUrl = process.env.FACILITATOR_API_URL
+            ? `${process.env.FACILITATOR_API_URL.replace(/\/api\/chat$/, '')}/api/projects`
+            : 'https://facilitator-api.vercel.app/api/projects';
+
+        const response = await fetch(baseUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                student_code: studentCode,
+                project_name: projectName,
+                project_data: serializedData,
+            }),
+        });
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `Failed to save project (HTTP ${response.status})`);
+        }
+
+        const result = await response.json();
+        console.log('[WebSave] Project saved successfully to web server:', result);
+        return result;
     }
 
     static resetDirectory() {
-        return ipcInvoke<void>('resetDirectory');
+        if (window.ipcInvoke && !(window.ipcInvoke as any).isMock) {
+            return ipcInvoke<void>('resetDirectory');
+        }
+        return Promise.resolve();
     }
 
     static async downloadExcel(filename: string, array: any[]) {
