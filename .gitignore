@@ -33,3 +33,4 @@ scratch/
 .vercel/
 test_puppeteer_direct.js
 
+.vercel

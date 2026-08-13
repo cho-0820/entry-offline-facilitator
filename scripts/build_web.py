@@ -14,6 +14,22 @@ src_main_views = os.path.join(ROOT_DIR, "src", "main", "views")
 dest_main_views = os.path.join(DIST_WEB, "src", "main", "views")
 shutil.copytree(src_main_views, dest_main_views, dirs_exist_ok=True)
 print("[BuildWeb] Copied src/main/views", flush=True)
+# 2b. Copy src/main/utils (including createLogger and other utilities)
+src_main_utils = os.path.join(ROOT_DIR, "src", "main", "utils")
+dest_main_utils = os.path.join(DIST_WEB, "src", "main", "utils")
+shutil.copytree(src_main_utils, dest_main_utils, dirs_exist_ok=True)
+print("[BuildWeb] Copied src/main utils", flush=True)
+# 2c. Copy src/main/commonUtils.ts
+src_common_utils = os.path.join(ROOT_DIR, "src", "main", "commonUtils.ts")
+dest_common_utils = os.path.join(DIST_WEB, "src", "main", "commonUtils.ts")
+shutil.copy2(src_common_utils, dest_common_utils)
+print("[BuildWeb] Copied commonUtils.ts", flush=True)
+# 2d. Copy root package.json so parseCommandLine can resolve it
+src_pkg = os.path.join(ROOT_DIR, "package.json")
+dest_pkg = os.path.join(DIST_WEB, "package.json")
+shutil.copy2(src_pkg, dest_pkg)
+print("[BuildWeb] Copied package.json", flush=True)
+
 
 # 3. Copy src/renderer (skipping uploads) & src/renderer_build
 def ignore_uploads(dirpath, names):
@@ -28,7 +44,17 @@ print("[BuildWeb] Copied src/renderer", flush=True)
 
 src_renderer_build = os.path.join(ROOT_DIR, "src", "renderer_build")
 dest_renderer_build = os.path.join(DIST_WEB, "src", "renderer_build")
-shutil.copytree(src_renderer_build, dest_renderer_build, dirs_exist_ok=True)
+os.makedirs(dest_renderer_build, exist_ok=True)
+for item in os.listdir(src_renderer_build):
+    s = os.path.join(src_renderer_build, item)
+    d = os.path.join(dest_renderer_build, item)
+    if os.path.isdir(s):
+        shutil.copytree(s, d, dirs_exist_ok=True)
+    else:
+        try:
+            shutil.copy2(s, d)
+        except Exception as e:
+            print(f"[BuildWeb] Warning copying {item}: {e}", flush=True)
 print("[BuildWeb] Copied src/renderer_build", flush=True)
 
 # 4. Copy required node_modules packages to dist_web/vendor

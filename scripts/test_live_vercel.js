@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const puppeteer = require('../scratch/node_modules/puppeteer-core');
 
-const TARGET_URL = 'https://distweb-theta.vercel.app';
+const TARGET_URL = 'https://entry-offline.vercel.app';
 const ARTIFACT_DIR = 'C:/Users/ohmyg/.gemini/antigravity/brain/43ac1564-adda-4c0a-b9c6-619ba36e0ace';
 const EDGE_PATH = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 
@@ -29,6 +29,20 @@ async function runTest() {
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
 
+    const imageStats = { total: 0, ok: 0, notFound: 0, failedUrls: [] };
+    page.on('response', (res) => {
+        const url = res.url();
+        if (url.includes('/images/') || url.includes('/vendor/entry-js/images/')) {
+            imageStats.total++;
+            if (res.status() === 200) {
+                imageStats.ok++;
+            } else if (res.status() === 404) {
+                imageStats.notFound++;
+                imageStats.failedUrls.push(url);
+            }
+        }
+    });
+
     page.on('console', (msg) => {
         consoleLogs.push(`[Console ${msg.type()}] ${msg.text()}`);
     });
@@ -41,19 +55,25 @@ async function runTest() {
         // ----------------------------------------------------
         // Step 1: Open Live URL & Wait for IpcRendererHelper
         // ----------------------------------------------------
-        log('--- Step 1: Opening Live Vercel App & Registering/Logging In Student ---');
-        await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        log('--- Step 1: Opening Live Vercel App ---');
+        await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 40000 });
 
-        // Wait for window.IpcRendererHelper to be initialized by render.bundle.js
-        log('Waiting for window.IpcRendererHelper initialization...');
-        await page.waitForFunction(() => window.IpcRendererHelper && window.IpcRendererHelper.webLoginToServer, { timeout: 20000 });
-
-        // Click mode selection modal confirm button if present
+        // Auto click modal confirm button
         await page.evaluate(() => {
             const btns = Array.from(document.querySelectorAll('button, div, span'));
             const confirmBtn = btns.find((b) => b.textContent && b.textContent.trim() === '확인');
             if (confirmBtn) confirmBtn.click();
         });
+
+        await delay(3000);
+
+        const shot1Path = path.join(ARTIFACT_DIR, 'live_vercel_canvas.png');
+        await page.screenshot({ path: shot1Path, fullPage: true });
+        log(`✓ Live Screenshot saved to: ${shot1Path}`);
+        log(`✓ Image Stats: Total=${imageStats.total}, OK(200)=${imageStats.ok}, 404=${imageStats.notFound}`);
+        if (imageStats.notFound > 0) {
+            log(`Failed URLs Sample: ${JSON.stringify(imageStats.failedUrls.slice(0, 5))}`);
+        }
 
         // Register student on production facilitator-api backend
         const loginRes = await page.evaluate(async () => {
@@ -61,9 +81,9 @@ async function runTest() {
         });
 
         log(`✓ Step 1 Complete - Real Server Login Result: ${JSON.stringify(loginRes)}`);
-        const shot1Path = path.join(ARTIFACT_DIR, 'live_step1_workspace.png');
-        await page.screenshot({ path: shot1Path });
-        log(`Screenshot: ${shot1Path}`);
+        const shot1_2Path = path.join(ARTIFACT_DIR, 'live_step1_workspace.png');
+        await page.screenshot({ path: shot1_2Path });
+        log(`Screenshot: ${shot1_2Path}`);
 
         // ----------------------------------------------------
         // Step 2: AI Facilitator Chat API & UI Scenario
