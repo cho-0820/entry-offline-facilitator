@@ -1,0 +1,18 @@
+feat: web project save/load via /api/projects endpoint
+
+- ipcRendererHelper.ts:
+  - loadProject: web branch fetches GET /api/projects?student_code=...&include_data=true, returns most recent project_data
+  - saveProject: web branch serializes project (converting blob URLs to base64 data URLs) and POSTs to /api/projects
+  - resetDirectory: web guard added
+- entryUtils.ts:
+  - getSavedProject: auto loads recent web project from server on workspace init in web environment
+- rendererUtils.ts:
+  - showSaveDialog / showSaveDialogAsync / showOpenDialog: added web guards to bypass native dialogs in browser
+- main.html:
+  - added window.dialog mock for browser runtime
+- renderEntry.tsx:
+  - exposed window.IpcRendererHelper and window.store for web helper/test access
+
+Verified via:
+1) Web E2E test (save -> Supabase DB row created -> page reload -> project auto loaded)
+2) Electron regression test via CDP (window.ipcInvoke.isMock is undefined, native IPC preserved)

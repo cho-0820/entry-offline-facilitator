@@ -25,6 +25,7 @@ import EntryModalHelper from '../helper/entry/entryModalHelper';
 import ipcRendererHelper from '../helper/ipcRendererHelper';
 import eventLogger from '../helper/logger/eventLogger';
 import AIAsidePanel from './AIAsidePanel';
+import { applyScrollGuard } from '../helpers/scrollGuard';
 
 interface IProps extends IReduxDispatch, IReduxState {}
 
@@ -92,6 +93,7 @@ class Workspace extends Component<IProps> {
     componentDidMount() {
         (window as any).workspaceInstance = this;
         IpcRendererHelper.checkUpdate();
+applyScrollGuard();
         setTimeout(async () => {
             await this._waitFontLoad();
             try {
