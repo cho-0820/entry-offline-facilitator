@@ -590,13 +590,15 @@ export const AIAsidePanel: React.FC = () => {
 
         // Requirement 1: Modeling trigger (Shown ONLY before first input in a new project session)
         if (isNewProject && !eventLogger.getHasSentFirstChat()) {
+            const modelingText = '어떤 기능이 필요하고 어떤 순서로 만들지 생각해봤나요?';
             initList.push({
                 id: 'modeling_trigger',
                 sender: 'facilitator',
                 title: '🧭 AI 퍼실리테이터 - 모델링 안내',
-                text: '어떤 기능이 필요하고 어떤 순서로 만들지 생각해봤나요?',
+                text: modelingText,
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             });
+            eventLogger.logFacilitatorIntervention('modeling', modelingText);
         }
 
         return initList;
@@ -624,14 +626,16 @@ export const AIAsidePanel: React.FC = () => {
                 if (!hasBlockChangeAfterSuggestion) {
                     clarificationShownRef.current = true;
                     const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const clarificationText = 'AI가 제안한 블록이 뭘 하는지 스스로 설명해볼 수 있나요?';
                     const clarificationMsg: ChatMessage = {
                         id: `clarification_${Date.now()}`,
                         sender: 'facilitator',
                         title: '🧭 AI 퍼실리테이터 - 명료화 안내',
-                        text: 'AI가 제안한 블록이 뭘 하는지 스스로 설명해볼 수 있나요?',
+                        text: clarificationText,
                         timestamp: nowTime,
                     };
                     setMessages((prev) => [...prev, clarificationMsg]);
+                    eventLogger.logFacilitatorIntervention('clarification', clarificationText);
                     console.log('[Phase4][Clarification] Clarification card triggered (no block_change after last suggestion).');
                 } else {
                     console.log('[Phase4][Clarification] Block changes detected after suggestion — clarification skipped.');
@@ -685,13 +689,15 @@ export const AIAsidePanel: React.FC = () => {
             // Trigger on reaching exactly 3 (≥3) for the first time per keyword
             if (keywordCountsRef.current[token] >= 3 && !coachingShownRef.current.has(token)) {
                 coachingShownRef.current.add(token);
+                const coachingText = 'AI의 답변 중 어떤 부분이 이해하기 어려운가요?';
                 coachingCards.push({
                     id: `coaching_${token}_${Date.now()}`,
                     sender: 'facilitator',
                     title: '🧭 AI 퍼실리테이터 - 코칭 안내',
-                    text: 'AI의 답변 중 어떤 부분이 이해하기 어려운가요?',
+                    text: coachingText,
                     timestamp: nowTime,
                 });
+                eventLogger.logFacilitatorIntervention('coaching', coachingText, { keyword: token, count: keywordCountsRef.current[token] });
                 console.log(`[Phase4][Coaching] Keyword "${token}" appeared ${keywordCountsRef.current[token]}x — coaching card triggered.`);
             }
         }
@@ -701,14 +707,16 @@ export const AIAsidePanel: React.FC = () => {
             const prevSuggestion = new Date(lastReflectionCheckTimeRef.current);
             const now = new Date();
             if (now.getTime() - prevSuggestion.getTime() <= REFLECTION_WINDOW_MS && now.getTime() >= reflectionCooldownRef.current) {
+                const reflectionText = 'AI의 접근 방식이 당신과 어떻게 다르고, 왜 다른가요?';
                 reflectionMsg = {
                     id: `reflection_${Date.now()}`,
                     sender: 'facilitator',
                     title: '🧭 AI 퍼실리테이터 - 성찰 안내',
-                    text: 'AI의 접근 방식이 당신과 어떻게 다르고, 왜 다른가요?',
+                    text: reflectionText,
                     timestamp: nowTime,
                 };
                 reflectionCooldownRef.current = now.getTime() + REFLECTION_COOLDOWN_MS;
+                eventLogger.logFacilitatorIntervention('reflection', reflectionText);
                 console.log('[Phase5][Reflection] Reflection card triggered.');
             }
         }
@@ -738,14 +746,16 @@ export const AIAsidePanel: React.FC = () => {
         // 3. Requirement 2: Scaffolding trigger (Shown ONLY upon first input in session)
         if (isFirstInput) {
             eventLogger.markFirstChatSent();
+            const scaffoldingText = '어떤 부분을 스스로 해결할 수 있고, 어떤 부분에 AI 도움이 필요한가요?';
             const scaffoldingMsg: ChatMessage = {
                 id: `scaffolding_${Date.now()}`,
                 sender: 'facilitator',
                 title: '🧭 AI 퍼실리테이터 - 스캐폴딩 안내',
-                text: '어떤 부분을 스스로 해결할 수 있고, 어떤 부분에 AI 도움이 필요한가요?',
+                text: scaffoldingText,
                 timestamp: nowTime,
             };
             pendingFacilitatorCards.push(scaffoldingMsg);
+            eventLogger.logFacilitatorIntervention('scaffolding', scaffoldingText);
         }
 
         // 4. Code Assistant Response (Real Claude Haiku 4.5 API Call with Loading Card)
@@ -888,15 +898,17 @@ export const AIAsidePanel: React.FC = () => {
                     if (count >= 2 && !explorationShownRef.current) {
                         // Show exploration card immediately
                         const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        const explorationText = 'AI에게 확인하기 전에, 코드를 고칠 다른 방법을 생각해보세요.';
                         const explorationMsg: ChatMessage = {
                             id: `exploration_${Date.now()}`,
                             sender: 'facilitator',
                             title: '🧭 AI 퍼실리테이터 - 탐색 안내',
-                            text: 'AI에게 확인하기 전에, 코드를 고칠 다른 방법을 생각해보세요.',
+                            text: explorationText,
                             timestamp: nowTime,
                         };
                         setMessages((prev) => [...prev, explorationMsg]);
                         explorationShownRef.current = true;
+                        eventLogger.logFacilitatorIntervention('exploration', explorationText, { errorKey: key, errorCount: count });
                         console.log('[Phase5][Exploration] Exploration card triggered.');
                     }
                 }

@@ -55,7 +55,10 @@ const setting = {
         ],
     },
     plugins: [
-        new CleanWebpackPlugin(),
+        new CleanWebpackPlugin({
+            cleanOnceBeforeBuildPatterns: [], // Prevent EBUSY lock errors on Windows
+            cleanAfterEveryBuildPatterns: [],
+        }),
         new ExtractTextPlugin('bundle.css'),
         new webpack.HotModuleReplacementPlugin(),
         new webpack.DefinePlugin({

@@ -13,6 +13,7 @@
 - [x] Phase 5: 수정 국면 확장 (성찰 + 탐색) (완료)
 - [x] Phase 6: 연구용 데이터 계층 + 아동 데이터 윤리 (완료)
 - [x] Phase 6-B: facilitator-api /api/logs 실시간 HTTP 업로더 연동 (완료 — HttpDataUploader 구현, 공용 크롬북 대응 매 업로드 시 student_code 동적 조회, events 단일 배치 전송)
+- [x] Phase 6-C: 6가지 퍼실리테이터 트리거 개입 이벤트 로깅 연동 (완료 — 이전까지 UI에만 카드로 표시되고 로깅이 누락되었던 modeling, scaffolding, coaching, clarification, reflection, exploration 6개 트리거에 facilitator_intervention 이벤트 및 strategy 전송 추가, 교사 대시보드 실측 반영 확인)
 - [ ] Phase 7: 교사-AI 협업 인터페이스 (선택)
 
 > 세션 시작 시 이 체크리스트를 먼저 확인하고, 완료된 phase는 체크 표시를 남길 것. 다음 세션에서 이어서 작업할 수 있도록 매 phase 종료 시 이 파일을 업데이트할 것.

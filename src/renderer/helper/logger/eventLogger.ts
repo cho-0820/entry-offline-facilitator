@@ -4,7 +4,7 @@
  * Types: "block_change" | "run_start" | "error" | "ai_chat_input" | "block_suggestion"
  */
 
-export type EventType = "block_change" | "run_start" | "error" | "ai_chat_input" | "block_suggestion";
+export type EventType = "block_change" | "run_start" | "error" | "ai_chat_input" | "block_suggestion" | "facilitator_intervention";
 
 export interface LogEvent {
     sessionId: string;
@@ -305,6 +305,20 @@ class EventLogger {
      */
     public logBlockSuggestion(payload?: Record<string, any>): LogEvent {
         return this.log('block_suggestion', payload || {});
+    }
+
+    /**
+     * Log Facilitator Intervention Trigger Event
+     * @param strategy One of 'modeling' | 'scaffolding' | 'coaching' | 'clarification' | 'reflection' | 'exploration'
+     * @param text Prompt / Guidance text presented on the facilitator card
+     * @param extraPayload Optional additional metadata
+     */
+    public logFacilitatorIntervention(strategy: string, text: string, extraPayload?: Record<string, any>): LogEvent {
+        return this.log('facilitator_intervention', {
+            strategy,
+            text,
+            ...(extraPayload || {}),
+        });
     }
 
     public getLogs(): LogEvent[] {
