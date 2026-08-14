@@ -40,8 +40,8 @@ class Workspace extends Component<IProps> {
     private defaultInitOption = {
         type: 'workspace',
         backpackDisable: true,
-        libDir: '../../../node_modules',
-        defaultDir: '../../renderer/resources',
+        libDir: '/vendor',
+        defaultDir: '/src/renderer/resources',
         entryDir: '/entry-js',
         baseUrl:
             process.env.NODE_ENV === 'development'

@@ -1,9 +1,8 @@
+/dist
 node_modules
 .git
 .idea
 .vscode
-dist
-src
 docs
 scripts
 validator

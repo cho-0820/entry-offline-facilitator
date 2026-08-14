@@ -21,6 +21,7 @@ const setting = {
     output: {
         path: path.resolve(__dirname, '..', 'src', 'renderer_build'),
         filename: '[name].bundle.js',
+        publicPath: '/',
         hotUpdateChunkFilename: 'hot/hot-update.js',
         hotUpdateMainFilename: 'hot/hot-update.json',
     },

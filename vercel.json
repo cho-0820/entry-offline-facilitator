@@ -3,6 +3,7 @@
   "outputDirectory": "dist_web",
   "cleanUrls": false,
   "rewrites": [
-    { "source": "/", "destination": "/src/main/views/main.html" }
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/src/main/views/main.html", "destination": "/index.html" }
   ]
 }

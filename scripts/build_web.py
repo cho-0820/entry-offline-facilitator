@@ -6,8 +6,9 @@ DIST_WEB = os.path.join(ROOT_DIR, "dist_web")
 
 print(f"[BuildWeb] Building fast web dist in {DIST_WEB}...", flush=True)
 
-# 1. Copy index.html
+# 1. Copy index.html & create favicon.ico
 shutil.copy2(os.path.join(ROOT_DIR, "index.html"), os.path.join(DIST_WEB, "index.html"))
+open(os.path.join(DIST_WEB, "favicon.ico"), "wb").close()
 
 # 2. Copy src/main/views
 src_main_views = os.path.join(ROOT_DIR, "src", "main", "views")
@@ -77,17 +78,24 @@ for mod in required_modules:
         print(f"[BuildWeb] Copying vendor package: {mod}...", flush=True)
         shutil.copytree(mod_src, mod_dest, dirs_exist_ok=True)
 
-# 5. Update main.html inside dist_web to point node_modules -> /vendor/
+# 5. Update main.html and index.html inside dist_web to use absolute / paths
 main_html_path = os.path.join(dest_main_views, "main.html")
 with open(main_html_path, "r", encoding="utf-8") as f:
     content = f.read()
 
+# Replace all relative prefixes with absolute / paths
 updated_content = content.replace("../../../node_modules/", "/vendor/")
+updated_content = updated_content.replace("../../renderer/", "/src/renderer/")
+updated_content = updated_content.replace("../../renderer_build/", "/src/renderer_build/")
 
 with open(main_html_path, "w", encoding="utf-8") as f:
     f.write(updated_content)
 
-print("[BuildWeb] Updated main.html script & link tags to point to /vendor/", flush=True)
+# Overwrite dist_web/index.html with main.html content so root / serves workspace directly with absolute paths
+with open(os.path.join(DIST_WEB, "index.html"), "w", encoding="utf-8") as f:
+    f.write(updated_content)
+
+print("[BuildWeb] Updated main.html & index.html script/link tags to use absolute / paths", flush=True)
 
 # 6. Create vercel.json inside dist_web & root
 vercel_config = """{
@@ -95,7 +103,8 @@ vercel_config = """{
   "public": true,
   "cleanUrls": false,
   "rewrites": [
-    { "source": "/", "destination": "/src/main/views/main.html" }
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/src/main/views/main.html", "destination": "/index.html" }
   ]
 }
 """
@@ -108,7 +117,8 @@ root_vercel_config = """{
   "outputDirectory": "dist_web",
   "cleanUrls": false,
   "rewrites": [
-    { "source": "/", "destination": "/src/main/views/main.html" }
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/src/main/views/main.html", "destination": "/index.html" }
   ]
 }
 """
@@ -117,3 +127,30 @@ with open(os.path.join(ROOT_DIR, "vercel.json"), "w", encoding="utf-8") as f:
     f.write(root_vercel_config)
 
 print("[BuildWeb] dist_web build completed successfully!", flush=True)
+
+import urllib.request
+import re
+
+print("[BuildWeb] Verifying deployed live HTML asset tags on https://distweb-theta.vercel.app/...", flush=True)
+try:
+    live_html = urllib.request.urlopen("https://distweb-theta.vercel.app/").read().decode("utf-8")
+    asset_paths = re.findall(r'(?:src|href)="([^"]+)"', live_html)
+    print(f"[BuildWeb] Found {len(asset_paths)} asset tags in live HTML.", flush=True)
+    all_ok = True
+    for path in asset_paths:
+        if path.startswith("http") or path.startswith("//"):
+            continue
+        full_url = "https://distweb-theta.vercel.app" + (path if path.startswith("/") else "/" + path)
+        try:
+            res = urllib.request.urlopen(full_url)
+            code = res.getcode()
+            print(f"  [200 OK] {path}", flush=True)
+        except Exception as err:
+            all_ok = False
+            print(f"  [FAIL {err}] {path}", flush=True)
+    if all_ok:
+        print("[BuildWeb] ALL ASSET TAGS RETURNED 200 OK!", flush=True)
+    else:
+        print("[BuildWeb] WARNING: SOME ASSET TAGS FAILED!", flush=True)
+except Exception as e:
+    print(f"[BuildWeb] Live check exception: {e}", flush=True)

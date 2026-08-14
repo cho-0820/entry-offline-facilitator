@@ -34,3 +34,4 @@ scratch/
 test_puppeteer_direct.js
 
 .vercel
+.env*

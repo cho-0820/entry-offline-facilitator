@@ -293,7 +293,7 @@ export default class {
                 if (!filename) return picture;
                 const ext = picture.ext || (picture.imageType === 'svg' ? '.svg' : '.png');
                 const subDir = `${filename.substr(0, 2)}/${filename.substr(2, 2)}`;
-                const imagePath = `../../renderer/resources/uploads/${subDir}/image/${filename}${ext}`;
+                const imagePath = `/src/renderer/resources/uploads/${subDir}/image/${filename}${ext}`;
 
                 return {
                     ...picture,
@@ -389,8 +389,8 @@ export default class {
         if (!filename) return '';
         const ext = sound.ext || '.mp3';
         const subDir = `${filename.substr(0, 2)}/${filename.substr(2, 2)}`;
-        const soundPath1 = `../../renderer/resources/uploads/${subDir}/sound/${filename}${ext}`;
-        const soundPath2 = `../../renderer/resources/uploads/${subDir}/${filename}${ext}`;
+        const soundPath1 = `/src/renderer/resources/uploads/${subDir}/sound/${filename}${ext}`;
+        const soundPath2 = `/src/renderer/resources/uploads/${subDir}/${filename}${ext}`;
 
         try {
             const res = await fetch(soundPath1, { method: 'HEAD' });
