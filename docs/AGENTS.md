@@ -5,14 +5,14 @@
 - **기반 플랫폼**: entry-offline (entrylabs/entry-offline, Electron + entryjs)
 - **핵심 참조 문서**: `docs/AI_퍼실리테이터_구현_워크플로우.md` (전체 phase 계획), `docs/FACILITATOR_SPEC.md` (Table 1 원문 — 아직 없으면 워크플로우 문서의 Table 1 섹션을 참고)
 
-## 현재 단계
 - [x] Phase 0: 코드베이스 탐색 (채팅/블록변경/실행/오류 이벤트 발생 지점 매핑)
-- [x] Phase 1: 통합 이벤트 로거
-- [x] Phase 2: MVP 트리거 — 계획 국면 (모델링 + 스캐폴딩)
-- [ ] Phase 3: 파이프라인 검증
-- [ ] Phase 4: 점검 국면 확장 (코칭 + 명료화)
-- [ ] Phase 5: 수정 국면 확장 (성찰 + 탐색)
-- [ ] Phase 6: 연구용 데이터 계층 + 아동 데이터 윤리
+- [x] Phase 1: 통합 이벤트 로거 (완료)
+- [x] Phase 2: MVP 트리거 — 계획 국면 (모델링 + 스캐폴딩) (완료)
+- [x] Phase 3: 파이프라인 검증 (완료)
+- [x] Phase 4: 점검 국면 확장 (코칭 + 명료화) (완료)
+- [x] Phase 5: 수정 국면 확장 (성찰 + 탐색) (완료)
+- [x] Phase 6: 연구용 데이터 계층 + 아동 데이터 윤리 (완료)
+- [x] Phase 6-B: facilitator-api /api/logs 실시간 HTTP 업로더 연동 (완료 — HttpDataUploader 구현, 공용 크롬북 대응 매 업로드 시 student_code 동적 조회, events 단일 배치 전송)
 - [ ] Phase 7: 교사-AI 협업 인터페이스 (선택)
 
 > 세션 시작 시 이 체크리스트를 먼저 확인하고, 완료된 phase는 체크 표시를 남길 것. 다음 세션에서 이어서 작업할 수 있도록 매 phase 종료 시 이 파일을 업데이트할 것.
