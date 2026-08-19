@@ -163,70 +163,6 @@ function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCo
             };
         }
 
-        // ── 삽입 전 threadCount 기록 (성공 검증 기준) ────────────────────────
-        const beforeCount: number = typeof codeObj.getThreadCount === 'function'
-            ? codeObj.getThreadCount()
-            : (codeObj.getThreads ? codeObj.getThreads().length : 0);
-
-        // ── 좌표 계산: 기존 블록과 겹치지 않도록 y 오프셋 산출 ──────────────
-        let maxY = 40;
-        if (codeObj.getThreads) {
-            const existingThreads: any[] = codeObj.getThreads() || [];
-            existingThreads.forEach((t: any) => {
-                const first = t.getFirstBlock ? t.getFirstBlock() : null;
-                if (first && typeof first.y === 'number') {
-                    maxY = Math.max(maxY, first.y);
-                }
-            });
-        }
-
-        // ── code_json 형식 정규화 ──────────────────────────────────────────
-        // Claude API가 반환하는 code_json은 두 가지 형태일 수 있음:
-        //   A) 평면 배열 (1개 스레드):  [block1, block2, ...]
-        //   B) 중첩 배열 (여러 스레드): [[block1, block2], [block3, ...], ...]
-        // 첫 번째 원소가 배열이면 B, 오브젝트이면 A로 판정해서 통일
-        const threads: any[][] = (codeJson.length > 0 && Array.isArray(codeJson[0]))
-            ? codeJson as any[][]          // 형태 B: 이미 스레드 배열
-            : [codeJson];                  // 형태 A: 평면 배열 → 단일 스레드로 감쌈
-
-        console.log(`[Phase9] Normalized to ${threads.length} thread(s). Format was: ${Array.isArray(codeJson[0]) ? 'nested [[...]]' : 'flat [...]'}`);
-
-        // ── 변수 생성 헬퍼: Entry.do('variableContainerAddVariable', ...) 대신
-        //    variableContainer.addVariable() 직접 호출
-        //    (Entry.do의 커맨드 이름 오타/누락이 함수 생성 등 엉뚱한 동작을 유발하므로 우회)
-        const createEntryVariable = (varName: string): boolean => {
-            try {
-                const vc = entryObj.variableContainer;
-                if (!vc) return false;
-                // 이미 있으면 스킵
-                const existing = vc.getVariable ? vc.getVariable(varName) : null;
-                if (existing) return false;
-
-                // Entry.Variable 인스턴스 생성
-                const id = entryObj.generateHash ? entryObj.generateHash() : Math.random().toString(36).slice(2, 10);
-                const varData = { id, name: varName, value: 0, type: 'variable', object: null, visible: true };
-                let variable: any = null;
-                if (entryObj.Variable) {
-                    variable = new entryObj.Variable(varData);
-                } else if (typeof Entry !== 'undefined' && (Entry as any).Variable) {
-                    variable = new (Entry as any).Variable(varData);
-                }
-                if (!variable) return false;
-
-                // variableContainer.addVariable() 직접 호출
-                if (vc.addVariable) {
-                    vc.addVariable(variable);
-                    if (vc.updateList) vc.updateList();
-                    console.log(`[VariableCreate] Created variable: "${varName}" (id: ${id})`);
-                    return true;
-                }
-                return false;
-            } catch (e) {
-                console.warn(`[VariableCreate] Failed to create variable "${varName}":`, e);
-                return false;
-            }
-        };
-
         // ── COMMAND_TYPES 검증 포함 안전한 Entry.do wrapper ────────────────
         //    존재하지 않는 커맨드 이름 사용 시 즉시 에러를 남기고 중단합니다.
         const VALID_ENTRY_COMMANDS = new Set([
@@ -282,6 +218,77 @@ function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCo
                 throw new Error(`[SafeEntryDo] Invalid command: "${commandName}"`);
             }
             return entryObj.do(commandName, ...args);
+        };
+
+        // ── 전제조건 4: 기존 캔버스 스레드 초기화 (Append -> Replace) ─────────────
+        console.log('[CanvasReplace] Clearing existing threads before inserting new code...');
+        try {
+            safeEntryDo('destroyThreads');
+        } catch (e) {
+            console.warn('[CanvasReplace] safeEntryDo("destroyThreads") failed, falling back to direct destroy:', e);
+        }
+        if (codeObj.getThreads) {
+            const remaining = codeObj.getThreads() || [];
+            if (remaining.length > 0) {
+                console.log(`[CanvasReplace] Force destroying ${remaining.length} remaining thread(s)...`);
+                remaining.forEach((t: any) => {
+                    if (t && typeof t.destroy === 'function') {
+                        t.destroy();
+                    }
+                });
+            }
+        }
+
+        // ── code_json 형식 정규화 ──────────────────────────────────────────
+        // Claude API가 반환하는 code_json은 두 가지 형태일 수 있음:
+        //   A) 평면 배열 (1개 스레드):  [block1, block2, ...]
+        //   B) 중첩 배열 (여러 스레드): [[block1, block2], [block3, ...], ...]
+        // 첫 번째 원소가 배열이면 B, 오브젝트이면 A로 판정해서 통일
+        const threads: any[][] = (codeJson.length > 0 && Array.isArray(codeJson[0]))
+            ? codeJson as any[][]          // 형태 B: 이미 스레드 배열
+            : [codeJson];                  // 형태 A: 평면 배열 → 단일 스레드로 감쌈
+
+        console.log(`[Phase9] Normalized to ${threads.length} thread(s). Format was: ${Array.isArray(codeJson[0]) ? 'nested [[...]]' : 'flat [...]'}`);
+
+        // ── 변수 생성 헬퍼: Entry.do('variableContainerAddVariable', ...) 대신
+        //    variableContainer.addVariable() 직접 호출
+        //    (Entry.do의 커맨드 이름 오타/누락이 함수 생성 등 엉뚱한 동작을 유발하므로 우회)
+        const createEntryVariable = (varName: string): boolean => {
+            try {
+                const vc = entryObj.variableContainer;
+                if (!vc) return false;
+                // 이미 있으면 스킵 (이름 기준 조회)
+                const existing = vc.getVariableByName 
+                    ? vc.getVariableByName(varName) 
+                    : (Array.isArray(vc.variables_) ? vc.variables_.find((v: any) => (v.getName && v.getName() === varName) || v.name_ === varName || v.name === varName) : null);
+                if (existing) {
+                    console.log(`[VariableCreate] Variable "${varName}" already exists. Reusing.`);
+                    return false;
+                }
+
+                // Entry.Variable 인스턴스 생성
+                const id = entryObj.generateHash ? entryObj.generateHash() : Math.random().toString(36).slice(2, 10);
+                const varData = { id, name: varName, value: 0, type: 'variable', object: null, visible: true };
+                let variable: any = null;
+                if (entryObj.Variable) {
+                    variable = new entryObj.Variable(varData);
+                } else if (typeof Entry !== 'undefined' && (Entry as any).Variable) {
+                    variable = new (Entry as any).Variable(varData);
+                }
+                if (!variable) return false;
+
+                // variableContainer.addVariable() 직접 호출
+                if (vc.addVariable) {
+                    vc.addVariable(variable);
+                    if (vc.updateList) vc.updateList();
+                    console.log(`[VariableCreate] Created variable: "${varName}" (id: ${id})`);
+                    return true;
+                }
+                return false;
+            } catch (e) {
+                console.warn(`[VariableCreate] Failed to create variable "${varName}":`, e);
+                return false;
+            }
         };
 
         // ── 변수 자동 생성: code_json 내 set_variable / get_variable 변수 사전 등록 ────
@@ -467,23 +474,22 @@ function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCo
         }
 
         let attemptedCount = 0;
-        for (const threadData of threads) {
+        let currentY = 50;
+        for (let tIdx = 0; tIdx < threads.length; tIdx++) {
+            const threadData = threads[tIdx];
             if (!Array.isArray(threadData) || threadData.length === 0) continue;
 
             // dialog VALUE에 calc 블록이 직접 있으면 변수 분리 전처리
             const preprocessedThread = preprocessThread(threadData);
 
-            const nextY = maxY === 40 ? 50 : maxY + 120;
+            const threadStartY = currentY;
             const preparedThread = preprocessedThread.map((block: any, bIdx: number) => {
-                return normalizeBlock(block, bIdx === 0, 50, nextY);
+                return normalizeBlock(block, bIdx === 0, 50, threadStartY);
             });
-
-            if (preparedThread[0]) {
-                maxY = preparedThread[0].y;
-            }
 
             safeEntryDo('addThread', preparedThread);
             attemptedCount++;
+            currentY += 120;
         }
 
         // ── 삽입 후 threadCount 비교 (실제 성공 검증) ────────────────────────
@@ -491,21 +497,20 @@ function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCo
             ? codeObj.getThreadCount()
             : (codeObj.getThreads ? codeObj.getThreads().length : 0);
 
-        const actualInserted = afterCount - beforeCount;
-        console.log(`[Phase9] threadCount: ${beforeCount} → ${afterCount} (attempted=${attemptedCount}, actual=${actualInserted})`);
+        console.log(`[CanvasReplace] Final threadCount on canvas: ${afterCount} (attempted=${attemptedCount})`);
 
         // 보드 리드로우 강제
         if (board.reDraw) board.reDraw();
 
-        if (actualInserted <= 0) {
+        if (afterCount <= 0) {
             return {
                 success: false,
                 insertedCount: 0,
-                error: `삽입을 시도했지만 블록이 추가되지 않았습니다 (before=${beforeCount}, after=${afterCount}).`,
+                error: `블록이 캔버스에 삽입되지 않았습니다 (afterCount=${afterCount}).`,
             };
         }
 
-        return { success: true, insertedCount: actualInserted };
+        return { success: true, insertedCount: afterCount };
     } catch (err: any) {
         console.error('[Phase9] Failed to insert code_json to canvas:', err);
         return { success: false, insertedCount: 0, error: err?.message || String(err) };
@@ -785,8 +790,23 @@ export const AIAsidePanel: React.FC = () => {
 
         console.log(`[Phase8][History] Sending ${historyForAssistant.length} history message(s) to Claude API.`);
 
-        // Call Anthropic Claude API via IPC with history
-        ipcRendererHelper.callCodeAssistantApi(trimmed, historyForAssistant).then((res) => {
+        // Extract current variable names from Entry variable container
+        let currentVarNames: string[] = [];
+        try {
+            const entryObj = (window as any).Entry;
+            const vc = entryObj && entryObj.variableContainer;
+            if (vc && Array.isArray(vc.variables_)) {
+                currentVarNames = vc.variables_
+                    .map((v: any) => (v.getName ? v.getName() : v.name_ || v.name))
+                    .filter((n: any) => typeof n === 'string' && n.trim().length > 0);
+            }
+        } catch (e) {
+            console.warn('[Phase8][Variables] Failed to collect current variable names:', e);
+        }
+        console.log(`[Phase8][Variables] Current project variables: [${currentVarNames.join(', ')}]`);
+
+        // Call Anthropic Claude API via IPC with history and current variable names
+        ipcRendererHelper.callCodeAssistantApi(trimmed, historyForAssistant, currentVarNames).then((res) => {
             const apiNowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             let responseText = res.text || '답변을 불러오지 못했습니다.';
 

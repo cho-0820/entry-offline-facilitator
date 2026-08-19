@@ -406,9 +406,13 @@ export default class {
         return Promise.resolve({ exists: false, maskedKey: '' });
     }
 
-    static callCodeAssistantApi(prompt: string, history: Array<{ role: 'user' | 'assistant'; content: string }> = []) {
+    static callCodeAssistantApi(
+        prompt: string,
+        history: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+        variableNames: string[] = []
+    ) {
         if (window.ipcInvoke && !(window.ipcInvoke as any).isMock) {
-            return window.ipcInvoke<{ text: string; code_json?: any }>('callCodeAssistantApi', prompt, history);
+            return window.ipcInvoke<{ text: string; code_json?: any }>('callCodeAssistantApi', prompt, history, variableNames);
         }
         const url = process.env.FACILITATOR_API_URL || 'https://facilitator-api.vercel.app/api/chat';
         return fetch(url, {
@@ -419,6 +423,7 @@ export default class {
             body: JSON.stringify({
                 prompt,
                 history,
+                variableNames,
             }),
         })
             .then((response) => {

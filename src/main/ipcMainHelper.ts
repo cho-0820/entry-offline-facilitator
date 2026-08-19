@@ -60,7 +60,12 @@ new (class {
             return { exists: true, maskedKey: masked };
         });
 
-        ipcMain.handle('callCodeAssistantApi', async (event: IpcMainInvokeEvent, prompt: string, history: Array<{ role: 'user' | 'assistant'; content: string }> = []) => {
+        ipcMain.handle('callCodeAssistantApi', async (
+            event: IpcMainInvokeEvent,
+            prompt: string,
+            history: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+            variableNames: string[] = []
+        ) => {
             const apiKey = process.env.ANTHROPIC_API_KEY;
             if (!apiKey) {
                 return {
@@ -477,12 +482,17 @@ new (class {
                 }
             }
 
-            logger.info(`[IPC][Claude] Sending ${sanitizedMessages.length} message(s) in conversation history.`);
+            let finalSystemPrompt = systemPrompt;
+            if (Array.isArray(variableNames) && variableNames.length > 0) {
+                finalSystemPrompt += `\n\n[현재 프로젝트에 등록된 변수 목록]\n다음은 현재 엔트리 프로젝트에 이미 등록된 변수 이름들입니다: [${variableNames.join(', ')}]\n동일하거나 유사한 목적으로 사용되는 변수는 새로운 이름을 짓지 말고, 위 목록에 있는 변수 이름을 그대로 재사용하여 code_json을 작성하세요.`;
+            }
+
+            logger.info(`[IPC][Claude] Sending ${sanitizedMessages.length} message(s) in conversation history (existing vars: ${Array.isArray(variableNames) ? variableNames.length : 0}).`);
 
             const requestBody = JSON.stringify({
                 model: 'claude-haiku-4-5-20251001',
                 max_tokens: 4096,
-                system: systemPrompt,
+                system: finalSystemPrompt,
                 messages: sanitizedMessages,
                 tools: [
                     {
