@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "outputDirectory": "dist_web",
+  "cleanUrls": false,
+  "rewrites": [
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/src/main/views/main.html", "destination": "/index.html" }
+  ]
+}

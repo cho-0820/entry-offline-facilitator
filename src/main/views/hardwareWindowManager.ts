@@ -1,7 +1,5 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
-import HardwareMainRouter from 'entry-hw/app/src/main/mainRouter.build';
-import HardwareEntryServer from '../utils/serverProcessManager';
 import createLogger from '../utils/functions/createLogger';
 
 const logger = createLogger('main/hardwareWindowManager.ts');
@@ -65,6 +63,9 @@ export default class HardwareWindowManager {
             },
         });
         remoteMain.enable(this.hardwareWindow.webContents);
+
+        const HardwareMainRouter = require('entry-hw/app/src/main/mainRouter.build').default;
+        const HardwareEntryServer = require('../utils/serverProcessManager').default;
 
         this.hardwareRouter = new HardwareMainRouter(
             this.hardwareWindow,

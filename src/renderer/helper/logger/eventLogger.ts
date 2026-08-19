@@ -4,7 +4,7 @@
  * Types: "block_change" | "run_start" | "error" | "ai_chat_input" | "block_suggestion"
  */
 
-export type EventType = "block_change" | "run_start" | "error" | "ai_chat_input" | "block_suggestion";
+export type EventType = "block_change" | "run_start" | "error" | "ai_chat_input" | "block_suggestion" | "facilitator_intervention";
 
 export interface LogEvent {
     sessionId: string;
@@ -100,6 +100,62 @@ export class LocalFileDataUploader implements DataUploader {
     }
 }
 
+/**
+ * HTTP REST API Data Uploader Implementation
+ * Uploads event logs directly to facilitator-api /api/logs endpoint in batch.
+ */
+export class HttpDataUploader implements DataUploader {
+    async upload(event: LogEvent): Promise<void> {
+        return this.uploadBatch([event]);
+    }
+
+    async uploadBatch(events: LogEvent[]): Promise<void> {
+        if (typeof window === 'undefined' || !events || events.length === 0) {
+            return;
+        }
+
+        // Dynamically read student_code on every upload call (handles shared devices)
+        const studentCode = sessionStorage.getItem('student_code');
+        if (!studentCode) {
+            console.warn('[HttpDataUploader] Skipping log upload: student_code not found in sessionStorage.');
+            return;
+        }
+
+        const apiUrl = process.env.FACILITATOR_API_URL
+            ? process.env.FACILITATOR_API_URL.replace('/api/chat', '/api/logs')
+            : 'https://facilitator-api.vercel.app/api/logs';
+
+        const payload = {
+            student_code: studentCode,
+            session_id: events[0].sessionId,
+            events: events.map((e) => ({
+                type: e.type,
+                timestamp: e.timestamp,
+                payload: e.payload || {},
+            })),
+        };
+
+        try {
+            const res = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            });
+
+            if (!res.ok) {
+                console.warn(`[HttpDataUploader] Log upload responded with HTTP status ${res.status}`);
+            } else {
+                const data = await res.json();
+                console.log(`[HttpDataUploader] Log upload successful (${events.length} event(s)):`, data);
+            }
+        } catch (err) {
+            console.warn('[HttpDataUploader] Network error during log upload:', err);
+        }
+    }
+}
+
 class EventLogger {
     private sessionId: string;
     private logs: LogEvent[] = [];
@@ -111,7 +167,7 @@ class EventLogger {
     
     // Phase 6: Data collection consent flag & pluggable uploader
     private enableDataCollection: boolean = false;
-    private dataUploader: DataUploader = new LocalFileDataUploader();
+    private dataUploader: DataUploader = new HttpDataUploader();
 
     constructor() {
         this.sessionId = this.generateSessionId();
@@ -249,6 +305,20 @@ class EventLogger {
      */
     public logBlockSuggestion(payload?: Record<string, any>): LogEvent {
         return this.log('block_suggestion', payload || {});
+    }
+
+    /**
+     * Log Facilitator Intervention Trigger Event
+     * @param strategy One of 'modeling' | 'scaffolding' | 'coaching' | 'clarification' | 'reflection' | 'exploration'
+     * @param text Prompt / Guidance text presented on the facilitator card
+     * @param extraPayload Optional additional metadata
+     */
+    public logFacilitatorIntervention(strategy: string, text: string, extraPayload?: Record<string, any>): LogEvent {
+        return this.log('facilitator_intervention', {
+            strategy,
+            text,
+            ...(extraPayload || {}),
+        });
     }
 
     public getLogs(): LogEvent[] {

@@ -5,17 +5,24 @@
 - **기반 플랫폼**: entry-offline (entrylabs/entry-offline, Electron + entryjs)
 - **핵심 참조 문서**: `docs/AI_퍼실리테이터_구현_워크플로우.md` (전체 phase 계획), `docs/FACILITATOR_SPEC.md` (Table 1 원문 — 아직 없으면 워크플로우 문서의 Table 1 섹션을 참고)
 
-## 현재 단계
 - [x] Phase 0: 코드베이스 탐색 (채팅/블록변경/실행/오류 이벤트 발생 지점 매핑)
-- [x] Phase 1: 통합 이벤트 로거
-- [x] Phase 2: MVP 트리거 — 계획 국면 (모델링 + 스캐폴딩)
-- [ ] Phase 3: 파이프라인 검증
-- [ ] Phase 4: 점검 국면 확장 (코칭 + 명료화)
-- [ ] Phase 5: 수정 국면 확장 (성찰 + 탐색)
-- [ ] Phase 6: 연구용 데이터 계층 + 아동 데이터 윤리
+- [x] Phase 1: 통합 이벤트 로거 (완료)
+- [x] Phase 2: MVP 트리거 — 계획 국면 (모델링 + 스캐폴딩) (완료)
+- [x] Phase 3: 파이프라인 검증 (완료)
+- [x] Phase 4: 점검 국면 확장 (코칭 + 명료화) (완료)
+- [x] Phase 5: 수정 국면 확장 (성찰 + 탐색) (완료)
+- [x] Phase 6: 연구용 데이터 계층 + 아동 데이터 윤리 (완료)
+- [x] Phase 6-B: facilitator-api /api/logs 실시간 HTTP 업로더 연동 (완료 — HttpDataUploader 구현, 공용 크롬북 대응 매 업로드 시 student_code 동적 조회, events 단일 배치 전송)
+- [x] Phase 6-C: 6가지 퍼실리테이터 트리거 개입 이벤트 로깅 연동 (완료)
 - [ ] Phase 7: 교사-AI 협업 인터페이스 (선택)
 
 > 세션 시작 시 이 체크리스트를 먼저 확인하고, 완료된 phase는 체크 표시를 남길 것. 다음 세션에서 이어서 작업할 수 있도록 매 phase 종료 시 이 파일을 업데이트할 것.
+
+## 중요 데이터 이력 및 실증 발견 (Phase 6-C 기록)
+- **퍼실리테이터 트리거 로깅 누락 발견 및 수정**:
+  - **상황**: Phase 2~5에서 구현된 6개 퍼실리테이터 트리거(모델링, 스캐폴딩, 코칭, 명료화, 성찰, 탐색)의 발동 조건 및 UI 카드는 처음부터 정상 작동하여 화면에 안내 카드가 잘 표시되었으나, 각 카드가 생성되어 `pendingFacilitatorCards`나 `messages` 배열에 들어갈 때 **`eventLogger`를 호출하여 서버로 전송하는 로깅 코드가 누락**되어 있었습니다.
+  - **수정**: `eventLogger.ts`에 신규 이벤트 타입 `facilitator_intervention` 및 `logFacilitatorIntervention(strategy, text, payload)`를 추가하고, `AIAsidePanel.tsx`에서 6개 트리거 카드 생성 즉시 해당 메서드가 호출되도록 수정했습니다.
+  - **연구 데이터 분석 시 주의사항**: Phase 6-C 수정 이전에 수집된 과거 학생 세션/이벤트 데이터는 학생의 챗봇 대화(`ai_chat_input`, `block_suggestion`)와 블록/실행 이벤트만 기록되어 있고 **트리거 통계(개입 횟수)가 0으로 비어있습니다**. 이는 퍼실리테이터가 개입하지 않은 것이 아니라 로깅 호출 누락으로 인한 것이며, Phase 6-C 이후 수집되는 데이터부터 6대 전략 및 3대 국면 개입 수가 온전하게 집계됩니다 (향후 `Table1_vs_실제구현_차이점.md` 및 DBR 논문 작성 시 실증 근거로 활용).
 
 ## 핵심 규칙
 1. Table 1의 트리거·전략·예시 문구를 임의로 재해석하지 말 것 — 원문 그대로 구현하고, 애매하면 코드를 짜기 전에 먼저 질문할 것

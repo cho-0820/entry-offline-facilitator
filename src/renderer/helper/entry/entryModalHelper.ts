@@ -179,7 +179,7 @@ class EntryModalHelper {
                                 options: object.entity || {},
                                 _id: Entry.generateHash(),
                                 fileurl:
-                                    '../../renderer/resources/images/workspace/text_icon_ko.svg',
+                                    '/src/renderer/resources/images/workspace/text_icon_ko.svg',
                             };
                         }
                         object.selectedPicture.sprite = item;
@@ -560,7 +560,7 @@ class EntryModalHelper {
                 },
             },
             aiBlocks as any,
-            '../../../node_modules/entry-js/images/aiUtilize/'
+            '/vendor/entry-js/images/aiUtilize/'
         );
     }
 
@@ -709,12 +709,12 @@ class EntryModalHelper {
         type: string,
         events: PopupEventListeners = {},
         data: any = [],
-        imageBaseUrl: string = '../../../node_modules/entry-js/images/hardware/'
+        imageBaseUrl: string = '/vendor/entry-js/images/hardware/'
     ) {
         this.loadPopup(data);
         const popup = EntryModalHelper.popup;
         const sidebar = getSidebarByType(type);
-        const showProps: any = { type, imageBaseUrl, baseUrl: '../../renderer/resources' };
+        const showProps: any = { type, imageBaseUrl, baseUrl: '/src/renderer/resources' };
         if (sidebar) {
             showProps.sidebar = sidebar;
         }
@@ -776,7 +776,7 @@ class EntryModalHelper {
             const modalStyleLink = document.createElement('link');
             modalStyleLink.setAttribute(
                 'href',
-                '../../../node_modules/@entrylabs/modal/dist/entry/entry-modal.css'
+                '/vendor/@entrylabs/modal/dist/entry/entry-modal.css'
             );
             modalStyleLink.setAttribute('rel', 'stylesheet');
             document.head.appendChild(modalStyleLink);

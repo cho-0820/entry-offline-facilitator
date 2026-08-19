@@ -5,8 +5,10 @@ const ExtractTextPlugin = require('extract-text-webpack-plugin');
 const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 const common = require('./webpack.common.config');
 
+const FACILITATOR_API_URL = process.env.FACILITATOR_API_URL || 'https://facilitator-api.vercel.app/api/chat';
+
 const setting = {
-    target: 'electron-renderer',
+    target: 'web',
     entry: {
         init: './src/renderer/initEntry.ts',
         render: './src/renderer/renderEntry.tsx',
@@ -19,6 +21,7 @@ const setting = {
     output: {
         path: path.resolve(__dirname, '..', 'src', 'renderer_build'),
         filename: '[name].bundle.js',
+        publicPath: '/',
         hotUpdateChunkFilename: 'hot/hot-update.js',
         hotUpdateMainFilename: 'hot/hot-update.json',
     },
@@ -52,9 +55,15 @@ const setting = {
         ],
     },
     plugins: [
-        new CleanWebpackPlugin(),
+        new CleanWebpackPlugin({
+            cleanOnceBeforeBuildPatterns: [], // Prevent EBUSY lock errors on Windows
+            cleanAfterEveryBuildPatterns: [],
+        }),
         new ExtractTextPlugin('bundle.css'),
         new webpack.HotModuleReplacementPlugin(),
+        new webpack.DefinePlugin({
+            'process.env.FACILITATOR_API_URL': JSON.stringify(FACILITATOR_API_URL),
+        }),
     ],
 };
 

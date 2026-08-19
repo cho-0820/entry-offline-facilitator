@@ -7,8 +7,12 @@ import { PersistGate } from 'redux-persist/integration/react';
 import configureStore from './store';
 import Index from './components/Index';
 import makeEntryAsciiArt from './makeEntryAsciiArt';
+import IpcRendererHelper from './helper/ipcRendererHelper';
+
+(window as any).IpcRendererHelper = IpcRendererHelper;
 
 const { store, persistor } = configureStore();
+(window as any).store = store;
 
 window.onPageLoaded(() => {
     ReactDom.render(

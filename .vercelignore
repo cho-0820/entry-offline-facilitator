@@ -1,0 +1,10 @@
+/dist
+node_modules
+.git
+.idea
+.vscode
+docs
+scripts
+validator
+scratch
+build
