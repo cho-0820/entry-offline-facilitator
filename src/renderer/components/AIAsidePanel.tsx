@@ -76,49 +76,11 @@ const renderMarkdown = (text: string) => {
  *   3. Each block gets Entry.generateHash() id before insertion
  *   4. Actual success is verified by threadCount delta on board.code
  */
-function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCount: number; error?: string; isConditionFallback?: boolean } {
+function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCount: number; error?: string } {
     try {
         const entryObj = (window as any).Entry;
         if (!entryObj) {
             return { success: false, insertedCount: 0, error: 'Entry 객체를 찾을 수 없습니다.' };
-        }
-
-        // ── 조건 분기(_if, if_else) 포함 여부 검사 헬퍼 ───────────────────
-        const checkHasCondition = (block: any): boolean => {
-            if (!block || typeof block !== 'object') return false;
-            if (block.type === '_if' || block.type === 'if_else') return true;
-            if (Array.isArray(block.params)) {
-                for (const p of block.params) {
-                    if (checkHasCondition(p)) return true;
-                }
-            }
-            if (Array.isArray(block.statements)) {
-                for (const branch of block.statements) {
-                    if (Array.isArray(branch)) {
-                        for (const child of branch) {
-                            if (checkHasCondition(child)) return true;
-                        }
-                    }
-                }
-            }
-            return false;
-        };
-
-        const hasCondition = Array.isArray(codeJson) && codeJson.some((th: any) => {
-            if (Array.isArray(th)) {
-                return th.some(checkHasCondition);
-            }
-            return checkHasCondition(th);
-        });
-
-        if (hasCondition) {
-            console.log('[Phase10][CanvasInsert] Condition block detected. Skipping automatic canvas insertion as per user instructions.');
-            return {
-                success: false,
-                insertedCount: 0,
-                isConditionFallback: true,
-                error: '이 코드는 조건문이 포함되어 있어 자동으로 넣기 어려워요. 아래 설명을 참고해서 블록 메뉴에서 직접 조립해볼까요?'
-            };
         }
 
         // ── 전제조건 1: 씬에 오브젝트가 있는지 확인 ─────────────────────────
@@ -824,9 +786,7 @@ export const AIAsidePanel: React.FC = () => {
                         timestamp: apiNowTime,
                     });
                 } else {
-                    const fallbackText = insertRes.isConditionFallback
-                        ? (insertRes.error || '')
-                        : `코드를 캔버스에 자동으로 추가하는 중에 문제가 생겼어요 (${insertRes.error || ''}). 필요 시 오른쪽 블록 메뉴에서 직접 만들어볼까요?`;
+                    const fallbackText = `코드를 캔버스에 자동으로 추가하는 중에 문제가 생겼어요 (${insertRes.error || ''}). 필요 시 오른쪽 블록 메뉴에서 직접 만들어볼까요?`;
                     extraCards.push({
                         id: `insert_failed_${Date.now()}`,
                         sender: 'facilitator',

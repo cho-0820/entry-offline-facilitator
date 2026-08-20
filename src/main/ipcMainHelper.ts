@@ -484,7 +484,7 @@ new (class {
 
             let finalSystemPrompt = systemPrompt;
             if (Array.isArray(variableNames) && variableNames.length > 0) {
-                finalSystemPrompt += `\n\n[현재 프로젝트에 등록된 변수 목록]\n다음은 현재 엔트리 프로젝트에 이미 등록된 변수 이름들입니다: [${variableNames.join(', ')}]\n동일하거나 유사한 목적으로 사용되는 변수는 새로운 이름을 짓지 말고, 위 목록에 있는 변수 이름을 그대로 재사용하여 code_json을 작성하세요.`;
+                finalSystemPrompt += `\n\n[현재 프로젝트에 등록된 변수 목록]\n다음은 현재 엔트리 프로젝트에 이미 등록된 변수 이름들입니다: [${variableNames.join(', ')}]\n- [수정/확장 요청]: 기존 프로그램의 동작을 이어가거나 수정하는 경우 위 목록에 있는 변수 이름을 우선 재사용하세요.\n- [새 프로그램/새 개념 요청]: 완전히 다른 목적의 새로운 프로그램이거나 새로운 개념(예: 학습자가 새로운 변수명을 직접 언급한 경우)이면 기존 변수를 억지로 재사용하지 말고 요청에 맞는 새로운 변수 이름을 생성하세요.`;
             }
 
             logger.info(`[IPC][Claude] Sending ${sanitizedMessages.length} message(s) in conversation history (existing vars: ${Array.isArray(variableNames) ? variableNames.length : 0}).`);
