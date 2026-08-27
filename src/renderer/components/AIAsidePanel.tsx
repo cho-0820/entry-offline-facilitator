@@ -287,7 +287,6 @@ function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCo
             });
         }
 
-
         // ── id 주입 + 좌표 설정 + Entry.js 파라미터 규격 자동 정규화(null 패딩) ────
         const generateId = entryObj.generateHash
             ? () => entryObj.generateHash()
@@ -332,11 +331,15 @@ function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCo
                         continue;
                     }
                 }
-                // statements가 있는 컨테이너 블록은 재귀 전처리
+                // statements가 있는 컨테이너 블록은 재귀 전처리 (1D/2D 배열 모두 지원)
                 if (block.statements && Array.isArray(block.statements)) {
+                    let rawBranches = block.statements;
+                    if (rawBranches.length > 0 && !Array.isArray(rawBranches[0])) {
+                        rawBranches = [rawBranches];
+                    }
                     const newBlock = JSON.parse(JSON.stringify(block));
-                    newBlock.statements = block.statements.map((branch: any) => {
-                        if (!Array.isArray(branch)) return branch;
+                    newBlock.statements = rawBranches.map((branch: any) => {
+                        if (!Array.isArray(branch)) return [];
                         return preprocessThread(branch);
                     });
                     result.push(newBlock);
@@ -358,10 +361,36 @@ function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCo
                 normalized.y = startY;
             }
 
-            // 1. statements 하위 블록 재귀적 정규화
-            if (normalized.statements && Array.isArray(normalized.statements)) {
-                normalized.statements = normalized.statements.map((branch: any) => {
-                    if (!Array.isArray(branch)) return branch;
+            const entryDef = entryObj.block ? entryObj.block[normalized.type] : null;
+
+            // 1. statements 하위 블록 재귀적 정규화 (1D/2D 배열 호환 및 스키마 슬롯 브랜치 패딩)
+            if (entryDef && entryDef.statements && Array.isArray(entryDef.statements)) {
+                const expectedBranchCount = entryDef.statements.length;
+                let rawStatements = normalized.statements;
+                if (!Array.isArray(rawStatements)) {
+                    rawStatements = [];
+                }
+                if (rawStatements.length > 0 && !Array.isArray(rawStatements[0])) {
+                    rawStatements = [rawStatements];
+                }
+
+                const normalizedStatements = [];
+                for (let bIdx = 0; bIdx < expectedBranchCount; bIdx++) {
+                    const branch = rawStatements[bIdx];
+                    if (Array.isArray(branch)) {
+                        normalizedStatements.push(branch.map((child: any) => normalizeBlock(child, false, 0, 0)));
+                    } else {
+                        normalizedStatements.push([]);
+                    }
+                }
+                normalized.statements = normalizedStatements;
+            } else if (normalized.statements && Array.isArray(normalized.statements)) {
+                let rawStatements = normalized.statements;
+                if (rawStatements.length > 0 && !Array.isArray(rawStatements[0])) {
+                    rawStatements = [rawStatements];
+                }
+                normalized.statements = rawStatements.map((branch: any) => {
+                    if (!Array.isArray(branch)) return [];
                     return branch.map((child: any) => normalizeBlock(child, false, 0, 0));
                 });
             }
@@ -396,7 +425,6 @@ function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCo
             }
 
             // 3. Entry.block 스펙 참조하여 인디케이터/텍스트 슬롯 null 패딩 매핑
-            const entryDef = entryObj.block ? entryObj.block[normalized.type] : null;
             if (entryDef && entryDef.params && Array.isArray(entryDef.params)) {
                 const expectedCount = entryDef.params.length;
                 const keyMap = entryDef.paramsKeyMap || {};
@@ -407,7 +435,16 @@ function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCo
                     keys.forEach((k: string, idx: number) => {
                         const targetIdx = keyMap[k];
                         if (idx < realInputs.length) {
-                            padded[targetIdx] = realInputs[idx];
+                            let inputVal = realInputs[idx];
+                            const pDef = entryDef.params[targetIdx];
+                            if (pDef && pDef.type === 'Block' && (typeof inputVal === 'number' || (typeof inputVal === 'string' && normalized.type !== 'set_variable' && normalized.type !== 'get_variable'))) {
+                                inputVal = {
+                                    id: generateId(),
+                                    type: typeof inputVal === 'number' ? 'number' : 'text',
+                                    params: [inputVal]
+                                };
+                            }
+                            padded[targetIdx] = inputVal;
                         }
                     });
                 } else {
@@ -416,7 +453,15 @@ function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCo
                         const pDef = entryDef.params[i];
                         if (pDef && (pDef.type === 'Block' || pDef.type === 'TextInput' || pDef.type === 'Dropdown' || pDef.type === 'DropdownDynamic')) {
                             if (inputIdx < realInputs.length) {
-                                padded[i] = realInputs[inputIdx++];
+                                let inputVal = realInputs[inputIdx++];
+                                if (pDef.type === 'Block' && typeof inputVal !== 'object') {
+                                    inputVal = {
+                                        id: generateId(),
+                                        type: typeof inputVal === 'number' ? 'number' : 'text',
+                                        params: [inputVal]
+                                    };
+                                }
+                                padded[i] = inputVal;
                             }
                         }
                     }
@@ -449,12 +494,13 @@ function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCo
                 return normalizeBlock(block, bIdx === 0, 50, threadStartY);
             });
 
+            console.log(`[CanvasInsert] Adding thread ${tIdx + 1}/${threads.length}:`, JSON.stringify(preparedThread));
             safeEntryDo('addThread', preparedThread);
             attemptedCount++;
             currentY += 120;
         }
 
-        // ── 삽입 후 threadCount 비교 (실제 성공 검증) ────────────────────────
+        // ── 삽입 후 threadCount 및 중첩 블록 정합성 검증 ────────────────────────
         const afterCount: number = typeof codeObj.getThreadCount === 'function'
             ? codeObj.getThreadCount()
             : (codeObj.getThreads ? codeObj.getThreads().length : 0);
@@ -470,6 +516,12 @@ function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCo
                 insertedCount: 0,
                 error: `블록이 캔버스에 삽입되지 않았습니다 (afterCount=${afterCount}).`,
             };
+        }
+
+        // JSON 직렬화 유효성 검증
+        if (typeof codeObj.toJSON === 'function') {
+            const canvasJSON = codeObj.toJSON();
+            console.log(`[CanvasReplace] Verified canvas code JSON serializability (threads: ${canvasJSON.length})`);
         }
 
         return { success: true, insertedCount: afterCount };
