@@ -409,10 +409,11 @@ export default class {
     static callCodeAssistantApi(
         prompt: string,
         history: Array<{ role: 'user' | 'assistant'; content: string }> = [],
-        variableNames: string[] = []
+        variableNames: string[] = [],
+        canvasCodeJson: any[] = []
     ) {
         if (window.ipcInvoke && !(window.ipcInvoke as any).isMock) {
-            return window.ipcInvoke<{ text: string; code_json?: any }>('callCodeAssistantApi', prompt, history, variableNames);
+            return window.ipcInvoke<{ text: string; code_json?: any }>('callCodeAssistantApi', prompt, history, variableNames, canvasCodeJson);
         }
         const url = process.env.FACILITATOR_API_URL || 'https://facilitator-api.vercel.app/api/chat';
         return fetch(url, {
@@ -424,6 +425,7 @@ export default class {
                 prompt,
                 history,
                 variableNames,
+                canvasCodeJson,
             }),
         })
             .then((response) => {

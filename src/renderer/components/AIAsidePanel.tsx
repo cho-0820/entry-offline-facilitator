@@ -531,6 +531,86 @@ function insertCodeJsonToCanvas(codeJson: any[]): { success: boolean; insertedCo
     }
 }
 
+/**
+ * UI 메타 필드를 재귀적으로 제거하고 id, type, params, statements만 남긴 트리로 정규화
+ * 최상위 블록의 x, y 좌표는 보존하여 스레드 캔버스 배치 위치 파악 지원
+ */
+function sanitizeCanvasBlock(node: any, isTopBlock: boolean = false): any {
+    if (!node || typeof node !== 'object') return node;
+    if (Array.isArray(node)) {
+        return node.map((child: any) => sanitizeCanvasBlock(child, false));
+    }
+
+    const clean: Record<string, any> = {
+        type: node.type,
+    };
+    if (node.id) clean.id = node.id;
+    if (isTopBlock && typeof node.x === 'number' && typeof node.y === 'number') {
+        clean.x = Math.round(node.x);
+        clean.y = Math.round(node.y);
+    }
+    if (node.params && Array.isArray(node.params)) {
+        clean.params = node.params.map((p: any) => sanitizeCanvasBlock(p, false));
+    }
+    if (node.statements && Array.isArray(node.statements)) {
+        clean.statements = node.statements.map((branch: any) => {
+            if (!Array.isArray(branch)) return [];
+            return branch.map((child: any) => sanitizeCanvasBlock(child, false));
+        });
+    }
+    return clean;
+}
+
+/**
+ * Entry.container.toJSON()에서 모든 오브젝트의 스크립트를 추출하고 sanitize 수행
+ */
+function collectSanitizedCanvasCode(): { sanitized: any[]; rawBytes: number; sanitizedBytes: number } {
+    let rawObjectsCode: any[] = [];
+    try {
+        const entryObj = (window as any).Entry;
+        if (entryObj && entryObj.container && typeof entryObj.container.toJSON === 'function') {
+            const containerJson = entryObj.container.toJSON() || [];
+            rawObjectsCode = containerJson.map((obj: any) => {
+                let script: any[] = [];
+                try {
+                    if (typeof obj.script === 'string') {
+                        script = JSON.parse(obj.script);
+                    } else if (Array.isArray(obj.script)) {
+                        script = obj.script;
+                    }
+                } catch (e) {
+                    script = [];
+                }
+                return {
+                    objectName: obj.name || '오브젝트',
+                    script: script,
+                };
+            });
+        }
+    } catch (e) {
+        console.warn('[CanvasCode] Failed to extract Entry.container.toJSON():', e);
+    }
+
+    const rawJsonStr = JSON.stringify(rawObjectsCode);
+    const rawBytes = typeof Blob !== 'undefined' ? new Blob([rawJsonStr]).size : Buffer.byteLength(rawJsonStr, 'utf8');
+
+    const sanitized = rawObjectsCode
+        .map((obj: any) => ({
+            objectName: obj.objectName,
+            script: (obj.script || []).map((thread: any[]) => {
+                return (thread || []).map((b: any, idx: number) => sanitizeCanvasBlock(b, idx === 0));
+            }),
+        }))
+        .filter((obj: any) => Array.isArray(obj.script) && obj.script.length > 0);
+
+    const sanitizedJsonStr = JSON.stringify(sanitized);
+    const sanitizedBytes = typeof Blob !== 'undefined' ? new Blob([sanitizedJsonStr]).size : Buffer.byteLength(sanitizedJsonStr, 'utf8');
+
+    console.log(`[CanvasCode] Sanitized canvas code collected: raw=${rawBytes}B, sanitized=${sanitizedBytes}B (${rawBytes > 0 ? (((rawBytes - sanitizedBytes) / rawBytes) * 100).toFixed(1) : 0}% reduction), objects=${sanitized.length}`);
+
+    return { sanitized, rawBytes, sanitizedBytes };
+}
+
 export const AIAsidePanel: React.FC = () => {
     const [input, setInput] = useState('');
 
@@ -819,8 +899,11 @@ export const AIAsidePanel: React.FC = () => {
         }
         console.log(`[Phase8][Variables] Current project variables: [${currentVarNames.join(', ')}]`);
 
-        // Call Anthropic Claude API via IPC with history and current variable names
-        ipcRendererHelper.callCodeAssistantApi(trimmed, historyForAssistant, currentVarNames).then((res) => {
+        // Collect current canvas code
+        const { sanitized: canvasCodeJson } = collectSanitizedCanvasCode();
+
+        // Call Anthropic Claude API via IPC with history, current variable names, and canvas code
+        ipcRendererHelper.callCodeAssistantApi(trimmed, historyForAssistant, currentVarNames, canvasCodeJson).then((res) => {
             const apiNowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             let responseText = res.text || '답변을 불러오지 못했습니다.';
 

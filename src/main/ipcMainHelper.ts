@@ -64,7 +64,8 @@ new (class {
             event: IpcMainInvokeEvent,
             prompt: string,
             history: Array<{ role: 'user' | 'assistant'; content: string }> = [],
-            variableNames: string[] = []
+            variableNames: string[] = [],
+            canvasCodeJson: any[] = []
         ) => {
             const apiKey = process.env.ANTHROPIC_API_KEY;
             if (!apiKey) {
@@ -487,7 +488,15 @@ new (class {
                 finalSystemPrompt += `\n\n[현재 프로젝트에 등록된 변수 목록]\n다음은 현재 엔트리 프로젝트에 이미 등록된 변수 이름들입니다: [${variableNames.join(', ')}]\n- [수정/확장 요청]: 기존 프로그램의 동작을 이어가거나 수정하는 경우 위 목록에 있는 변수 이름을 우선 재사용하세요.\n- [새 프로그램/새 개념 요청]: 완전히 다른 목적의 새로운 프로그램이거나 새로운 개념(예: 학습자가 새로운 변수명을 직접 언급한 경우)이면 기존 변수를 억지로 재사용하지 말고 요청에 맞는 새로운 변수 이름을 생성하세요.`;
             }
 
-            logger.info(`[IPC][Claude] Sending ${sanitizedMessages.length} message(s) in conversation history (existing vars: ${Array.isArray(variableNames) ? variableNames.length : 0}).`);
+            if (Array.isArray(canvasCodeJson)) {
+                if (canvasCodeJson.length > 0) {
+                    finalSystemPrompt += `\n\n[현재 캔버스에 실제로 배치된 코드 구조]\n다음은 현재 캔버스에 실제로 배치된 코드 구조다:\n${JSON.stringify(canvasCodeJson, null, 2)}\n- [진단형 질문]: 사용자가 진단형 질문(예: '왜 안돼?', '이거 왜 이래?', '뭐가 문제야?', '지금 캔버스에 뭐가 있어?')을 하면 이 데이터를 근거로 실제 블록 이름과 구조를 언급하며 답하라.\n- [코드 생성/수정 요청]: 코드 생성/수정 요청일 때는 기존 방침대로 완전한 새 프로그램을 생성하되, 이 데이터에 있는 오브젝트/구조를 참고해 일관성을 유지하라.`;
+                } else {
+                    finalSystemPrompt += `\n\n[현재 캔버스에 실제로 배치된 코드 구조]\n현재 캔버스에는 아무런 블록도 배치되어 있지 않습니다 (빈 캔버스).`;
+                }
+            }
+
+            logger.info(`[IPC][Claude] Sending ${sanitizedMessages.length} message(s) in conversation history (existing vars: ${Array.isArray(variableNames) ? variableNames.length : 0}, canvas objects: ${Array.isArray(canvasCodeJson) ? canvasCodeJson.length : 0}).`);
 
             const requestBody = JSON.stringify({
                 model: 'claude-haiku-4-5-20251001',
