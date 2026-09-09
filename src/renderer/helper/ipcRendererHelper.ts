@@ -112,7 +112,16 @@ export default class {
     static async saveProject(project: IEntry.Project, targetPath?: string) {
         // Phase 6: Save conversation messages ONLY if data collection consent is granted
         if (eventLogger.getIsDataCollectionEnabled()) {
-            const aiMessages = (window as any).__ENTRY_AI_MESSAGES__ || [];
+            const rawAiMessages = (window as any).__ENTRY_AI_MESSAGES__ || [];
+            // UI 엘리먼트나 순환 참조가 직렬화되지 않도록 순수 데이터 필드만 복제
+            const aiMessages = rawAiMessages.map((m: any) => ({
+                id: m.id,
+                sender: m.sender,
+                title: m.title,
+                text: m.text,
+                code_json: m.code_json,
+                timestamp: m.timestamp,
+            }));
             (project as any).messages = aiMessages;
             console.log(`[Phase6] Saving project with ${aiMessages.length} custom messages (consent=granted).`);
         } else {

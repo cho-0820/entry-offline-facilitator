@@ -627,6 +627,13 @@ applyScrollGuard();
         this.setState({ executionStatus: this.state.executionStatus });
 
         this.addEntryEvents();
+        if (project && Array.isArray((project as any).messages)) {
+            (project as any).messages.forEach((m: any) => {
+                if (m && m.listElement && typeof m.listElement.removeClass !== 'function' && !m.listElement.classList) {
+                    delete m.listElement;
+                }
+            });
+        }
         Entry.loadProject(project);
 
         /*

@@ -102,4 +102,53 @@ export default function() {
             }
         });
     };
+
+    /**
+     * VariableContainer.clearListElement 안전 패치:
+     * project.messages에 AI 채팅 메시지나 직렬화된 일반 객체가 들어있는 경우,
+     * item.listElement가 jQuery 래핑 인스턴스가 아니거나 DOM 엘리먼트 또는 일반 객체일 수 있음.
+     * 이 때 item.listElement.removeClass('unfold') 호출 시 TypeError 예외가 발생하여
+     * 프로젝트 로드 및 블록 렌더링이 중단되는 문제를 방지한다.
+     */
+    const EntryAny = Entry as any;
+    if (EntryAny.VariableContainer && EntryAny.VariableContainer.prototype) {
+        EntryAny.VariableContainer.prototype.clearListElement = function() {
+            var clearList = [this.listView_];
+            for (var _i = 0, _clearList = clearList; _i < _clearList.length; _i++) {
+                var elem = _clearList[_i];
+                while (elem && elem.firstChild) {
+                    elem.removeChild(elem.lastChild);
+                }
+            }
+            var arrItems = [this.messages_, this.variables_, this.lists_, this.functions_];
+            arrItems.forEach(function (items) {
+                if (!items) return;
+                Object.values(items).forEach(function (item: any) {
+                    if (item && item.listElement) {
+                        if (typeof item.listElement.removeClass === 'function') {
+                            item.listElement.removeClass('unfold').removeClass('selected').addClass('fold');
+                        } else if (item.listElement.classList && typeof item.listElement.classList.remove === 'function') {
+                            item.listElement.classList.remove('unfold', 'selected');
+                            item.listElement.classList.add('fold');
+                        } else if ((window as any).$ && (item.listElement instanceof (window as any).$ || item.listElement.nodeType)) {
+                            (window as any).$(item.listElement).removeClass('unfold selected').addClass('fold');
+                        }
+                    }
+                });
+            });
+            if (this.listSettingView) {
+                (window as any).$(this.listSettingView).remove();
+                delete this.listSettingView;
+            }
+            if (this.variableSettingView) {
+                (window as any).$(this.variableSettingView).remove();
+                delete this.variableSettingView;
+            }
+            if (this.funcSettingView) {
+                (window as any).$(this.funcSettingView).remove();
+                delete this.funcSettingView;
+            }
+        };
+    }
 }
+
