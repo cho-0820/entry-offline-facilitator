@@ -490,9 +490,24 @@ new (class {
 
             if (Array.isArray(canvasCodeJson)) {
                 if (canvasCodeJson.length > 0) {
-                    finalSystemPrompt += `\n\n[현재 캔버스에 실제로 배치된 코드 구조]\n다음은 현재 캔버스에 실제로 배치된 코드 구조다:\n${JSON.stringify(canvasCodeJson, null, 2)}\n- [진단형 질문]: 사용자가 진단형 질문(예: '왜 안돼?', '이거 왜 이래?', '뭐가 문제야?', '지금 캔버스에 뭐가 있어?')을 하면 이 데이터를 근거로 실제 블록 이름과 구조를 언급하며 답하라.\n- [코드 생성/수정 요청]: 코드 생성/수정 요청일 때는 기존 방침대로 완전한 새 프로그램을 생성하되, 이 데이터에 있는 오브젝트/구조를 참고해 일관성을 유지하라.`;
+                    finalSystemPrompt += `\n\n[현재 캔버스에 실제로 배치된 코드 구조]
+다음은 현재 사용자의 캔버스에 실제로 배치된 블록 코드 데이터다:
+${JSON.stringify(canvasCodeJson, null, 2)}
+
+[캔버스 코드 참조 및 질문 응답 지침 - 중요]
+1. 당신은 시스템을 통해 현재 캔버스에 있는 블록 데이터를 완전히 실시간으로 전달받고 있습니다.
+2. 따라서 "캔버스를 직접 읽을 수 없다", "실시간으로 볼 수 없다", "블록을 말씀으로 설명해달라"와 같은 말을 절대로 해서는 안 됩니다! 이미 위 데이터에 모든 블록 구성이 주어져 있습니다.
+3. [캔버스 확인/읽기/진단/분석형 질문]:
+   - 사용자가 "현재 내 캔버스에 있는 블록을 읽어봐", "지금 캔버스에 뭐가 있어?", "캔버스에 어떤 블록들이 배치되어 있어?", "왜 실행이 이상해?", "뭐가 문제야?" 등 현재 캔버스 상태를 확인, 읽기, 분석, 진단해달라고 요청하면:
+   - 절대로 거절하지 마세요!
+   - 위 데이터에 있는 오브젝트 이름, 블록 이름과 파라미터 수치, 순서를 구체적으로 하나하나 친절하게 나열하며 설명하세요.
+   - 새 코드를 작성할 필요가 없는 단순 확인/질문인 경우 code_json은 빈 배열 []로 두세요.
+4. [코드 생성/수정 요청]:
+   - 새로운 프로그램을 만들거나 수정해달라는 요청이면 위 캔버스 블록 구조를 참고하여 필요한 완전한 새 code_json을 작성하세요.`;
                 } else {
-                    finalSystemPrompt += `\n\n[현재 캔버스에 실제로 배치된 코드 구조]\n현재 캔버스에는 아무런 블록도 배치되어 있지 않습니다 (빈 캔버스).`;
+                    finalSystemPrompt += `\n\n[현재 캔버스에 실제로 배치된 코드 구조]
+현재 캔버스에는 아무런 블록도 배치되어 있지 않습니다 (빈 캔버스).
+사용자가 캔버스 확인/읽기를 요청하면 현재 캔버스가 비어있음을 친절히 안내하세요.`;
                 }
             }
 
@@ -516,7 +531,7 @@ new (class {
                                 },
                                 code_json: {
                                     type: 'array',
-                                    description: 'Entry.js 2D thread JSON array containing executable code blocks for the requested program.',
+                                    description: 'Entry.js 2D thread JSON array containing executable code blocks for the requested program. If the user only asked to check/read/diagnose the canvas and did not ask for new code, provide an empty array [].',
                                 },
                             },
                             required: ['text', 'code_json'],
@@ -571,14 +586,21 @@ new (class {
                                     }
 
                                     // Double validation against block type whitelist
-                                    const isValid = validateBlockJsonTypes(codeJson);
-                                    logger.info(`[BlockValidator] Validation result for code_json: ${isValid}`);
-                                    if (!isValid || !codeJson || !Array.isArray(codeJson) || codeJson.length === 0) {
-                                        logger.warn('[BlockValidator] code_json invalidated or empty.');
-                                        codeJson = null;
-                                        if (!outputText.includes('코드를 아직 다 만들지 못했어요')) {
-                                            outputText += '\n\n💡 *(코드를 아직 다 만들지 못했어요. 원하는 동작을 포함하여 다시 한번 요청해 주세요!)*';
+                                    let isValid = false;
+                                    if (codeJson && Array.isArray(codeJson) && codeJson.length > 0) {
+                                        isValid = validateBlockJsonTypes(codeJson);
+                                        logger.info(`[BlockValidator] Validation result for code_json: ${isValid}`);
+                                        if (!isValid) {
+                                            logger.warn('[BlockValidator] code_json invalidated by whitelist.');
+                                            codeJson = null;
+                                            if (!outputText.includes('코드를 아직 다 만들지 못했어요')) {
+                                                outputText += '\n\n💡 *(코드를 아직 다 만들지 못했어요. 원하는 동작을 포함하여 다시 한번 요청해 주세요!)*';
+                                            }
                                         }
+                                    } else {
+                                        // Intentionally empty or no code generated (e.g. diagnostic or informational question)
+                                        codeJson = null;
+                                        isValid = true;
                                     }
 
                                     resolve({ text: outputText, code_json: codeJson, isValidTypes: isValid });
