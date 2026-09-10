@@ -791,7 +791,7 @@ export const AIAsidePanel: React.FC = () => {
         const isRunCoachingAnswer = waitingRunCoachingRef.current;
         if (isRunCoachingAnswer) {
             waitingRunCoachingRef.current = false;
-            eventLogger.logAIChatInput(trimmed, { inResponseToCoaching: true });
+            eventLogger.logAIChatInput(trimmed, { inResponseToCoaching: true, strategy: 'coaching', trigger_strategy: 'coaching' });
             console.log('[Coaching][RunTrigger] Learner answered run coaching inquiry:', trimmed);
         } else {
             eventLogger.logAIChatInput(trimmed);
@@ -934,9 +934,9 @@ export const AIAsidePanel: React.FC = () => {
             const apiNowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             let responseText = res.text || '답변을 불러오지 못했습니다.';
 
-            // Phase 9: Real canvas block insertion
+            // Phase 9: Real canvas block insertion (Inhibited during coaching interactions)
             const extraCards: ChatMessage[] = [];
-            if (res.code_json && Array.isArray(res.code_json) && res.code_json.length > 0) {
+            if (!isRunCoachingAnswer && res.code_json && Array.isArray(res.code_json) && res.code_json.length > 0) {
                 console.log('[Phase9] Inserting code_json to canvas:', res.code_json);
                 const insertRes = insertCodeJsonToCanvas(res.code_json);
                 if (insertRes.success) {
@@ -957,6 +957,8 @@ export const AIAsidePanel: React.FC = () => {
                         timestamp: apiNowTime,
                     });
                 }
+            } else if (isRunCoachingAnswer && res.code_json) {
+                console.log('[Coaching] code_json insertion inhibited during coaching response.');
             }
 
             const realAssistantReply: ChatMessage = {

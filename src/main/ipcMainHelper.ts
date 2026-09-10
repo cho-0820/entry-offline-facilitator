@@ -504,14 +504,15 @@ ${JSON.stringify(canvasCodeJson, null, 2)}
    - 새 코드를 작성할 필요가 없는 단순 확인/질문인 경우 code_json은 빈 배열 []로 두세요.
 4. [실행 후 코칭 질의응답 지침 - 매우 중요]:
    - 퍼실리테이터가 "실행해보니 어땠어? 원하던 대로 잘 움직였어?"와 같은 질문을 던진 후, 학생이 실행 결과에 대해 답변했을 때:
+   - 이 대화 흐름은 코칭 및 스스로 생각해보는 성찰 과정입니다. 절대로 캔버스 코드를 새로 생성하거나 기존 코드를 다시 채워 넣지 마세요! code_json은 반드시 빈 배열 []로 지정해야 합니다.
    - (A) 학생이 성공, 만족, 정상 동작을 표현한 경우 (예: "응 잘 돼!", "성공했어!", "원하던 대로 움직여"):
      - 밝고 따뜻하게 칭찬과 격려를 해주세요! ("와, 정말 멋져요!", "스스로 해내다니 대단해요!")
      - 다음 단계로 도전해볼 만한 흥미로운 추가 아이디어(예: 소리 추가, 반복 횟수 늘리기 등)를 가볍게 제안하세요.
-     - code_json은 빈 배열 []로 두세요.
+     - code_json은 반드시 빈 배열 []로 두세요. 절대로 기존 코드를 code_json에 다시 담지 마세요!
    - (B) 학생이 실패, 불만족, 오류, 멈춤, 모호함을 표현한 경우 (예: "아니 이상하게 움직여", "안 움직여", "왜 멈추지?", "모르겠어"):
      - 절대로 무작정 정답 코드를 다 만들어주지 마세요.
      - 위 [현재 캔버스에 실제로 배치된 코드 구조] 데이터를 바탕으로, 학생에게 원인을 스스로 생각해볼 수 있도록 되묻거나(질문) 또는 문제가 되는 블록 지점(예: '만약 ~ 참이라면' 블록의 조건, 반복문 안의 블록 등)을 부드럽게 지목하는 힌트를 제공하세요.
-     - 학생이 직접 원인을 찾아 수정해볼 수 있도록 안내하고, code_json은 빈 배열 []로 두세요 (새 코드를 직접 만들어달라고 명시적으로 요구하기 전까지는 스스로 해결하도록 유도).
+     - 학생이 직접 원인을 찾아 수정해볼 수 있도록 안내하고, code_json은 반드시 빈 배열 []로 두세요. 절대로 기존 코드를 code_json에 다시 담거나 새 코드를 생성하지 마세요 (새 코드를 직접 만들어달라고 명시적으로 요구하기 전까지는 스스로 해결하도록 유도).
 5. [코드 생성/수정 요청]:
    - 새로운 프로그램을 만들거나 수정해달라는 요청이면 위 캔버스 블록 구조를 참고하여 필요한 완전한 새 code_json을 작성하세요.`;
                 } else {
@@ -595,9 +596,20 @@ ${JSON.stringify(canvasCodeJson, null, 2)}
                                         }
                                     }
 
+                                    const isCoachingInquiryInHistory = Array.isArray(history) && history.some((h) =>
+                                        typeof h.content === 'string' && (
+                                            h.content.includes('실행해보니 어땠어') ||
+                                            h.content.includes('원하던 대로 잘 움직였어')
+                                        )
+                                    );
+
                                     // Double validation against block type whitelist
                                     let isValid = false;
-                                    if (codeJson && Array.isArray(codeJson) && codeJson.length > 0) {
+                                    if (isCoachingInquiryInHistory) {
+                                        codeJson = null;
+                                        isValid = true;
+                                        logger.info('[BlockValidator] Coaching response detected: code_json suppressed to null.');
+                                    } else if (codeJson && Array.isArray(codeJson) && codeJson.length > 0) {
                                         isValid = validateBlockJsonTypes(codeJson);
                                         logger.info(`[BlockValidator] Validation result for code_json: ${isValid}`);
                                         if (!isValid) {
