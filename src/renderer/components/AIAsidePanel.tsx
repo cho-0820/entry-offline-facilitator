@@ -633,6 +633,7 @@ export const AIAsidePanel: React.FC = () => {
     // unmounted/remounted when a new session starts (e.g., new project loaded).
     const keywordCountsRef = useRef<Record<string, number>>({});
     const coachingShownRef = useRef<Set<string>>(new Set());
+    const waitingRunCoachingRef = useRef<boolean>(false);
             // (Removed duplicate clarification refs)
     // Phase 5 — Reflection Trigger: independent timestamp reference.
     const lastReflectionCheckTimeRef = useRef<string | null>(null);
@@ -753,6 +754,24 @@ export const AIAsidePanel: React.FC = () => {
             }
             // Prepare for next interval
             hasErrorInCurrentRunRef.current = false;
+
+            // ---- Coaching Trigger on Run (Phase 4 / New Trigger) ----
+            const { sanitized: currentBlocks } = collectSanitizedCanvasCode();
+            if (currentBlocks && currentBlocks.length > 0) {
+                const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const coachingPrompt = '실행해보니 어땠어? 원하던 대로 잘 움직였어?';
+                const coachingMsg: ChatMessage = {
+                    id: `coaching_run_${Date.now()}`,
+                    sender: 'facilitator',
+                    title: '🧭 AI 퍼실리테이터 - 코칭 안내',
+                    text: coachingPrompt,
+                    timestamp: nowTime,
+                };
+                setMessages((prev) => [...prev, coachingMsg]);
+                waitingRunCoachingRef.current = true;
+                eventLogger.logFacilitatorIntervention('coaching', coachingPrompt, { trigger: 'run_button_click' });
+                console.log('[Coaching][RunTrigger] Coaching question triggered on run button click with canvas blocks present.');
+            }
         });
 
         // Cleanup: unsubscribe when component unmounts
@@ -769,7 +788,14 @@ export const AIAsidePanel: React.FC = () => {
         const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
         // 1. Log event via eventLogger (type: "ai_chat_input")
-        eventLogger.logAIChatInput(trimmed);
+        const isRunCoachingAnswer = waitingRunCoachingRef.current;
+        if (isRunCoachingAnswer) {
+            waitingRunCoachingRef.current = false;
+            eventLogger.logAIChatInput(trimmed, { inResponseToCoaching: true });
+            console.log('[Coaching][RunTrigger] Learner answered run coaching inquiry:', trimmed);
+        } else {
+            eventLogger.logAIChatInput(trimmed);
+        }
 
         // Phase 4 — Coaching Trigger:
         // Splits the learner's message into tokens and counts per-keyword occurrences
@@ -872,10 +898,11 @@ export const AIAsidePanel: React.FC = () => {
         setMessages(updatedList);
         setInput('');
 
-        // Extract conversation history between user and code_assistant only (excluding facilitator cards)
+        // Extract conversation history for Claude:
+        // Include user and code_assistant messages, plus any run coaching inquiry from facilitator so Claude has context
         // Keep up to 10 recent turns (20 messages max) to manage token cost
         const historyForAssistant: Array<{ role: 'user' | 'assistant'; content: string }> = messages
-            .filter((m) => (m.sender === 'user' || m.sender === 'code_assistant') && !m.id.includes('loading') && m.text.trim().length > 0)
+            .filter((m) => ((m.sender === 'user' || m.sender === 'code_assistant') || (m.sender === 'facilitator' && m.id.startsWith('coaching_run_'))) && !m.id.includes('loading') && m.text.trim().length > 0)
             .map((m) => ({
                 role: (m.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
                 content: m.text,
