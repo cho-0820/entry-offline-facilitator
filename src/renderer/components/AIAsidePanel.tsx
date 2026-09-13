@@ -634,6 +634,8 @@ export const AIAsidePanel: React.FC = () => {
     const keywordCountsRef = useRef<Record<string, number>>({});
     const coachingShownRef = useRef<Set<string>>(new Set());
     const waitingRunCoachingRef = useRef<boolean>(false);
+    // Phase 2 — Scaffolding Trigger: tracks if scaffolding has been shown in the current session.
+    const scaffoldingShownRef = useRef<boolean>(false);
             // (Removed duplicate clarification refs)
     // Phase 5 — Reflection Trigger: independent timestamp reference.
     const lastReflectionCheckTimeRef = useRef<string | null>(null);
@@ -845,7 +847,6 @@ export const AIAsidePanel: React.FC = () => {
                 console.log('[Phase5][Reflection] Reflection card triggered.');
             }
         }
-        const isFirstInput = !eventLogger.getHasSentFirstChat();
 
         // 2. Append User Message
         const userMsg: ChatMessage = {
@@ -868,8 +869,9 @@ export const AIAsidePanel: React.FC = () => {
             pendingFacilitatorCards.push(...coachingCards);
         }
 
-        // 3. Requirement 2: Scaffolding trigger (Shown ONLY upon first input in session)
-        if (isFirstInput) {
+        // 3. Requirement 2: Scaffolding trigger (Shown ONLY upon first learner-initiated coding prompt in session, excluded on coaching replies)
+        if (!isRunCoachingAnswer && !scaffoldingShownRef.current && !eventLogger.getHasSentFirstChat()) {
+            scaffoldingShownRef.current = true;
             eventLogger.markFirstChatSent();
             const scaffoldingText = '어떤 부분을 스스로 해결할 수 있고, 어떤 부분에 AI 도움이 필요한가요?';
             const scaffoldingMsg: ChatMessage = {
@@ -881,6 +883,7 @@ export const AIAsidePanel: React.FC = () => {
             };
             pendingFacilitatorCards.push(scaffoldingMsg);
             eventLogger.logFacilitatorIntervention('scaffolding', scaffoldingText);
+            console.log('[Phase2][Scaffolding] Scaffolding card triggered on first genuine AI chat input.');
         }
 
         // 4. Code Assistant Response (Real Claude Haiku 4.5 API Call with Loading Card)
