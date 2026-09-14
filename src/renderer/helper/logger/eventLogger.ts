@@ -332,12 +332,12 @@ class EventLogger {
         if (this.initialized) {
             return;
         }
-        this.initialized = true;
 
-        if (typeof window === 'undefined' || !(window as any).Entry) {
-            console.warn('[EventLogger] Entry object not available yet.');
+        if (typeof window === 'undefined' || !(window as any).Entry || typeof (window as any).Entry.addEventListener !== 'function') {
+            console.warn('[EventLogger] Entry object or addEventListener not available yet.');
             return;
         }
+        this.initialized = true;
 
         const Entry = (window as any).Entry;
 
@@ -418,4 +418,7 @@ class EventLogger {
 }
 
 export const eventLogger = new EventLogger();
+if (typeof window !== 'undefined') {
+    (window as any).__ENTRY_EVENT_LOGGER__ = eventLogger;
+}
 export default eventLogger;

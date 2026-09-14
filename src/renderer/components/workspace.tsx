@@ -652,6 +652,8 @@ applyScrollGuard();
             Entry.Func.setupMenuCode();
             Entry.Func.updateMenu();
         }
+
+        eventLogger.init();
     };
 
     reloadProject = async () => {

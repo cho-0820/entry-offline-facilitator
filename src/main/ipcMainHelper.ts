@@ -509,12 +509,14 @@ ${JSON.stringify(canvasCodeJson, null, 2)}
      - 밝고 따뜻하게 칭찬과 격려를 해주세요! ("와, 정말 멋져요!", "스스로 해내다니 대단해요!")
      - 다음 단계로 도전해볼 만한 흥미로운 추가 아이디어(예: 소리 추가, 반복 횟수 늘리기 등)를 가볍게 제안하세요.
      - code_json은 반드시 빈 배열 []로 두세요. 절대로 기존 코드를 code_json에 다시 담지 마세요!
+     - 도구 호출 시 coaching_outcome을 반드시 "success"로 지정하세요.
    - (B) 학생이 실패, 불만족, 오류, 멈춤, 모호함을 표현한 경우 (예: "아니 이상하게 움직여", "안 움직여", "왜 멈추지?", "모르겠어"):
      - 절대로 무작정 정답 코드를 다 만들어주지 마세요.
      - 위 [현재 캔버스에 실제로 배치된 코드 구조] 데이터를 바탕으로, 학생에게 원인을 스스로 생각해볼 수 있도록 되묻거나(질문) 또는 문제가 되는 블록 지점(예: '만약 ~ 참이라면' 블록의 조건, 반복문 안의 블록 등)을 부드럽게 지목하는 힌트를 제공하세요.
      - 학생이 직접 원인을 찾아 수정해볼 수 있도록 안내하고, code_json은 반드시 빈 배열 []로 두세요. 절대로 기존 코드를 code_json에 다시 담거나 새 코드를 생성하지 마세요 (새 코드를 직접 만들어달라고 명시적으로 요구하기 전까지는 스스로 해결하도록 유도).
-5. [코드 생성/수정 요청]:
-   - 새로운 프로그램을 만들거나 수정해달라는 요청이면 위 캔버스 블록 구조를 참고하여 필요한 완전한 새 code_json을 작성하세요.`;
+     - 도구 호출 시 coaching_outcome을 반드시 "failure"로 지정하세요.
+ 5. [코드 생성/수정 요청]:
+    - 새로운 프로그램을 만들거나 수정해달라는 요청이면 위 캔버스 블록 구조를 참고하여 필요한 완전한 새 code_json을 작성하세요.`;
                 } else {
                     finalSystemPrompt += `\n\n[현재 캔버스에 실제로 배치된 코드 구조]
 현재 캔버스에는 아무런 블록도 배치되어 있지 않습니다 (빈 캔버스).
@@ -543,6 +545,11 @@ ${JSON.stringify(canvasCodeJson, null, 2)}
                                 code_json: {
                                     type: 'array',
                                     description: 'Entry.js 2D thread JSON array containing executable code blocks for the requested program. If the user only asked to check/read/diagnose the canvas and did not ask for new code, provide an empty array [].',
+                                },
+                                coaching_outcome: {
+                                    type: 'string',
+                                    enum: ['success', 'failure', 'none'],
+                                    description: '코칭 질문("실행해보니 어땠어? 원하던 대로 잘 움직였어?")에 대한 학생 답변의 판단 결과: 성공/만족/정상 동작이면 "success", 실패/어려움/오류/이상 동작이면 "failure", 코칭 답변이 아니면 "none".',
                                 },
                             },
                             required: ['text', 'code_json'],
@@ -579,6 +586,7 @@ ${JSON.stringify(canvasCodeJson, null, 2)}
                                     const parsed = JSON.parse(data);
                                     let outputText = '';
                                     let codeJson: any = null;
+                                    let coachingOutcome: 'success' | 'failure' | 'none' = 'none';
 
                                     logger.info(`[IPC][Claude] Response stop_reason: ${parsed.stop_reason}, usage: ${JSON.stringify(parsed.usage)}`);
 
@@ -587,7 +595,10 @@ ${JSON.stringify(canvasCodeJson, null, 2)}
                                         if (toolUseContent && toolUseContent.input) {
                                             outputText = toolUseContent.input.text || '';
                                             codeJson = toolUseContent.input.code_json || null;
-                                            logger.info(`[IPC][Claude] tool_use input code_json present? ${codeJson !== null && codeJson !== undefined}`);
+                                            if (toolUseContent.input.coaching_outcome === 'success' || toolUseContent.input.coaching_outcome === 'failure') {
+                                                coachingOutcome = toolUseContent.input.coaching_outcome;
+                                            }
+                                            logger.info(`[IPC][Claude] tool_use input code_json present? ${codeJson !== null && codeJson !== undefined}, coaching_outcome: ${coachingOutcome}`);
                                         } else {
                                             const textContent = parsed.content.find((c: any) => c.type === 'text');
                                             if (textContent) {
@@ -625,7 +636,7 @@ ${JSON.stringify(canvasCodeJson, null, 2)}
                                         isValid = true;
                                     }
 
-                                    resolve({ text: outputText, code_json: codeJson, isValidTypes: isValid });
+                                    resolve({ text: outputText, code_json: codeJson, isValidTypes: isValid, coaching_outcome: coachingOutcome });
                                 } catch (e: any) {
                                     resolve({ text: data, code_json: null, isValidTypes: false });
                                 }

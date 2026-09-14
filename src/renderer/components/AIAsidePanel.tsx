@@ -628,12 +628,20 @@ export const AIAsidePanel: React.FC = () => {
     }, []);
 
     // Phase 4 — Coaching Trigger state (useRef to avoid stale closure in handleSend)
-    // NOTE: keywordCountsRef and coachingShownRef are reset on component remount (session change).
-    // There is no explicit reset logic; the session lifecycle relies on AIAsidePanel being
-    // unmounted/remounted when a new session starts (e.g., new project loaded).
-    const keywordCountsRef = useRef<Record<string, number>>({});
-    const coachingShownRef = useRef<Set<string>>(new Set());
     const waitingRunCoachingRef = useRef<boolean>(false);
+    // Strategy Transition Hooks (Post-Coaching)
+    const isInArticulationRef = useRef<boolean>(false);
+    const isInScaffoldingRef = useRef<boolean>(false);
+
+    const onEnterArticulation = () => {
+        isInArticulationRef.current = true;
+        console.log('[Phase][Articulation] Entered articulation state');
+    };
+
+    const onEnterScaffolding = () => {
+        isInScaffoldingRef.current = true;
+        console.log('[Phase][Scaffolding] Entered scaffolding state');
+    };
     // Phase 2 — Scaffolding Trigger: tracks if scaffolding has been shown in the current session.
     const scaffoldingShownRef = useRef<boolean>(false);
             // (Removed duplicate clarification refs)
@@ -799,35 +807,6 @@ export const AIAsidePanel: React.FC = () => {
             eventLogger.logAIChatInput(trimmed);
         }
 
-        // Phase 4 — Coaching Trigger:
-        // Splits the learner's message into tokens and counts per-keyword occurrences
-        // using simple substring matching (includes). This is intentionally checking
-        // the LEARNER's input only (ai_chat_input), NOT the code assistant's replies.
-        // Morphological analysis is deferred; plain string matching is sufficient for MVP.
-        // keywordCountsRef/coachingShownRef are reset only on component remount (session change) —
-        // useRef (not useState) is used here to avoid stale closure bugs in handleSend.
-        const tokens = trimmed.split(/\s+/);
-        const coachingCards: ChatMessage[] = [];
-
-        for (const token of tokens) {
-            const pastCount = keywordCountsRef.current[token] || 0;
-            keywordCountsRef.current[token] = pastCount + 1;
-
-            // Trigger on reaching exactly 3 (≥3) for the first time per keyword
-            if (keywordCountsRef.current[token] >= 3 && !coachingShownRef.current.has(token)) {
-                coachingShownRef.current.add(token);
-                const coachingText = 'AI의 답변 중 어떤 부분이 이해하기 어려운가요?';
-                coachingCards.push({
-                    id: `coaching_${token}_${Date.now()}`,
-                    sender: 'facilitator',
-                    title: '🧭 AI 퍼실리테이터 - 코칭 안내',
-                    text: coachingText,
-                    timestamp: nowTime,
-                });
-                eventLogger.logFacilitatorIntervention('coaching', coachingText, { keyword: token, count: keywordCountsRef.current[token] });
-                console.log(`[Phase4][Coaching] Keyword "${token}" appeared ${keywordCountsRef.current[token]}x — coaching card triggered.`);
-            }
-        }
         // Phase 5 — Reflection Trigger: check if a recent suggestion exists within window and cooldown passed
         let reflectionMsg: ChatMessage | null = null;
         if (lastReflectionCheckTimeRef.current) {
@@ -862,11 +841,6 @@ export const AIAsidePanel: React.FC = () => {
         // Append reflection card if triggered
         if (reflectionMsg) {
             pendingFacilitatorCards.push(reflectionMsg);
-        }
-
-        // Append coaching cards if any
-        if (coachingCards.length > 0) {
-            pendingFacilitatorCards.push(...coachingCards);
         }
 
         // 3. Requirement 2: Scaffolding trigger (Shown ONLY upon first learner-initiated coding prompt in session, excluded on coaching replies)
@@ -995,6 +969,21 @@ export const AIAsidePanel: React.FC = () => {
             lastSuggestionTimeRef.current = suggestionEvent.timestamp;
             lastReflectionCheckTimeRef.current = suggestionEvent.timestamp;
             console.log(`[Phase8][Claude] Real AI response received and swapped into chat.`);
+
+            // Post-coaching strategy transition hook
+            if (isRunCoachingAnswer) {
+                const outcome = res.coaching_outcome || (
+                    (trimmed.includes('응') || trimmed.includes('잘') || trimmed.includes('성공') || trimmed.includes('됐') || trimmed.includes('맞아') || trimmed.includes('좋아') || trimmed.includes('원하던'))
+                        ? 'success'
+                        : 'failure'
+                );
+                console.log(`[Coaching][Branch] Post-coaching response outcome evaluated as: ${outcome}`);
+                if (outcome === 'success') {
+                    onEnterArticulation();
+                } else {
+                    onEnterScaffolding();
+                }
+            }
         }).catch((err) => {
             const errorReply: ChatMessage = {
                 id: `assistant_err_${Date.now()}`,

@@ -422,7 +422,7 @@ export default class {
         canvasCodeJson: any[] = []
     ) {
         if (window.ipcInvoke && !(window.ipcInvoke as any).isMock) {
-            return window.ipcInvoke<{ text: string; code_json?: any }>('callCodeAssistantApi', prompt, history, variableNames, canvasCodeJson);
+            return window.ipcInvoke<{ text: string; code_json?: any; isValidTypes?: boolean; coaching_outcome?: 'success' | 'failure' | 'none' }>('callCodeAssistantApi', prompt, history, variableNames, canvasCodeJson);
         }
         const url = process.env.FACILITATOR_API_URL || 'https://facilitator-api.vercel.app/api/chat';
         return fetch(url, {
@@ -444,7 +444,7 @@ export default class {
                 return response.json();
             })
             .then((data) => {
-                return data as { text: string; code_json?: any };
+                return data as { text: string; code_json?: any; isValidTypes?: boolean; coaching_outcome?: 'success' | 'failure' | 'none' };
             });
     }
 }
