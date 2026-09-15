@@ -786,22 +786,29 @@ export const AIAsidePanel: React.FC = () => {
             hasErrorInCurrentRunRef.current = false;
 
             // ---- Direct Clarification Trigger on Run (Phase 1.5 Redesign) ----
-            // Execution with canvas blocks present directly triggers Clarification ("코드 설명해볼까요?")
+            // Execution with canvas blocks present triggers Clarification ("코드 설명해볼까요?") if no runtime error occurs
             const { sanitized: currentBlocks } = collectSanitizedCanvasCode();
             if (currentBlocks && currentBlocks.length > 0) {
-                const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const clarificationText = '코드 설명해볼까요?';
-                const clarificationMsg: ChatMessage = {
-                    id: `clarification_direct_${Date.now()}`,
-                    sender: 'facilitator',
-                    title: '🧭 AI 퍼실리테이터 - 명료화 안내',
-                    text: clarificationText,
-                    timestamp: nowTime,
-                };
-                setMessages((prev) => [...prev, clarificationMsg]);
-                onEnterArticulation();
-                eventLogger.logFacilitatorIntervention('clarification', clarificationText, { trigger: 'run_success_direct' });
-                console.log('[Clarification][RunTrigger] Direct clarification question triggered on run button click with canvas blocks present.');
+                setTimeout(() => {
+                    // Check if an error occurred immediately upon execution
+                    if (hasErrorInCurrentRunRef.current || waitingRunCoachingRef.current) {
+                        console.log('[Clarification][RunTrigger] Runtime error detected; direct clarification skipped in favor of error coaching.');
+                        return;
+                    }
+                    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const clarificationText = '코드 설명해볼까요?';
+                    const clarificationMsg: ChatMessage = {
+                        id: `clarification_direct_${Date.now()}`,
+                        sender: 'facilitator',
+                        title: '🧭 AI 퍼실리테이터 - 명료화 안내',
+                        text: clarificationText,
+                        timestamp: nowTime,
+                    };
+                    setMessages((prev) => [...prev, clarificationMsg]);
+                    onEnterArticulation();
+                    eventLogger.logFacilitatorIntervention('clarification', clarificationText, { trigger: 'run_success_direct' });
+                    console.log('[Clarification][RunTrigger] Direct clarification question triggered on run button click with canvas blocks present.');
+                }, 100);
             }
         });
 
