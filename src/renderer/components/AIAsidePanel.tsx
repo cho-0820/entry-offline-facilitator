@@ -629,13 +629,33 @@ export const AIAsidePanel: React.FC = () => {
 
     // Phase 4 — Coaching Trigger state (useRef to avoid stale closure in handleSend)
     const waitingRunCoachingRef = useRef<boolean>(false);
-    // Strategy Transition Hooks (Post-Coaching)
+    // Strategy Transition Hooks (Post-Coaching Chaining: Articulation -> Reflection)
     const isInArticulationRef = useRef<boolean>(false);
+    const waitingArticulationAnswerRef = useRef<boolean>(false);
+    const isInReflectionRef = useRef<boolean>(false);
+    const waitingReflectionAnswerRef = useRef<boolean>(false);
     const isInScaffoldingRef = useRef<boolean>(false);
 
     const onEnterArticulation = () => {
         isInArticulationRef.current = true;
-        console.log('[Phase][Articulation] Entered articulation state');
+        waitingArticulationAnswerRef.current = true;
+        console.log('[Phase][Articulation] Entered articulation state, waiting for student explanation');
+    };
+
+    const onEnterReflection = () => {
+        isInArticulationRef.current = false;
+        waitingArticulationAnswerRef.current = false;
+        isInReflectionRef.current = true;
+        waitingReflectionAnswerRef.current = true;
+        console.log('[Phase][Reflection] Entered reflection state, waiting for student self-directed thinking reflection');
+    };
+
+    const onEndChain = () => {
+        isInArticulationRef.current = false;
+        waitingArticulationAnswerRef.current = false;
+        isInReflectionRef.current = false;
+        waitingReflectionAnswerRef.current = false;
+        console.log('[Phase][Chain] Clarification -> Reflection chain completed. Returned to idle.');
     };
 
     const onEnterScaffolding = () => {
@@ -799,17 +819,30 @@ export const AIAsidePanel: React.FC = () => {
 
         // 1. Log event via eventLogger (type: "ai_chat_input")
         const isRunCoachingAnswer = waitingRunCoachingRef.current;
+        const isArticulationAnswer = waitingArticulationAnswerRef.current;
+        const isReflectionAnswer = waitingReflectionAnswerRef.current;
+
         if (isRunCoachingAnswer) {
             waitingRunCoachingRef.current = false;
             eventLogger.logAIChatInput(trimmed, { inResponseToCoaching: true, strategy: 'coaching', trigger_strategy: 'coaching' });
             console.log('[Coaching][RunTrigger] Learner answered run coaching inquiry:', trimmed);
+        } else if (isArticulationAnswer) {
+            waitingArticulationAnswerRef.current = false;
+            eventLogger.logAIChatInput(trimmed, { inResponseToArticulation: true, strategy: 'clarification', trigger_strategy: 'clarification' });
+            console.log('[Phase][Articulation] Learner answered articulation (code explanation) inquiry:', trimmed);
+        } else if (isReflectionAnswer) {
+            waitingReflectionAnswerRef.current = false;
+            eventLogger.logAIChatInput(trimmed, { inResponseToReflection: true, strategy: 'reflection', trigger_strategy: 'reflection' });
+            console.log('[Phase][Reflection] Learner answered reflection inquiry:', trimmed);
         } else {
             eventLogger.logAIChatInput(trimmed);
         }
 
         // Phase 5 — Reflection Trigger: check if a recent suggestion exists within window and cooldown passed
+        // Collision guard: do not trigger suggestion-based reflection during active chain or when answering chain questions
+        const isChainActive = isInArticulationRef.current || waitingArticulationAnswerRef.current || isInReflectionRef.current || waitingReflectionAnswerRef.current || isArticulationAnswer || isReflectionAnswer || isRunCoachingAnswer;
         let reflectionMsg: ChatMessage | null = null;
-        if (lastReflectionCheckTimeRef.current) {
+        if (!isChainActive && lastReflectionCheckTimeRef.current) {
             const prevSuggestion = new Date(lastReflectionCheckTimeRef.current);
             const now = new Date();
             if (now.getTime() - prevSuggestion.getTime() <= REFLECTION_WINDOW_MS && now.getTime() >= reflectionCooldownRef.current) {
@@ -843,8 +876,8 @@ export const AIAsidePanel: React.FC = () => {
             pendingFacilitatorCards.push(reflectionMsg);
         }
 
-        // 3. Requirement 2: Scaffolding trigger (Shown ONLY upon first learner-initiated coding prompt in session, excluded on coaching replies)
-        if (!isRunCoachingAnswer && !scaffoldingShownRef.current && !eventLogger.getHasSentFirstChat()) {
+        // 3. Requirement 2: Scaffolding trigger (Shown ONLY upon first learner-initiated coding prompt in session, excluded on coaching/chain replies)
+        if (!isRunCoachingAnswer && !isArticulationAnswer && !isReflectionAnswer && !scaffoldingShownRef.current && !eventLogger.getHasSentFirstChat()) {
             scaffoldingShownRef.current = true;
             eventLogger.markFirstChatSent();
             const scaffoldingText = '어떤 부분을 스스로 해결할 수 있고, 어떤 부분에 AI 도움이 필요한가요?';
@@ -876,10 +909,10 @@ export const AIAsidePanel: React.FC = () => {
         setInput('');
 
         // Extract conversation history for Claude:
-        // Include user and code_assistant messages, plus any run coaching inquiry from facilitator so Claude has context
+        // Include user and code_assistant messages, plus any run coaching or chaining inquiries from facilitator so Claude has context
         // Keep up to 10 recent turns (20 messages max) to manage token cost
         const historyForAssistant: Array<{ role: 'user' | 'assistant'; content: string }> = messages
-            .filter((m) => ((m.sender === 'user' || m.sender === 'code_assistant') || (m.sender === 'facilitator' && m.id.startsWith('coaching_run_'))) && !m.id.includes('loading') && m.text.trim().length > 0)
+            .filter((m) => ((m.sender === 'user' || m.sender === 'code_assistant') || (m.sender === 'facilitator' && (m.id.startsWith('coaching_run_') || m.id.startsWith('clarification_chain_') || m.id.startsWith('reflection_chain_')))) && !m.id.includes('loading') && m.text.trim().length > 0)
             .map((m) => ({
                 role: (m.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
                 content: m.text,
@@ -911,9 +944,10 @@ export const AIAsidePanel: React.FC = () => {
             const apiNowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             let responseText = res.text || '답변을 불러오지 못했습니다.';
 
-            // Phase 9: Real canvas block insertion (Inhibited during coaching interactions)
+            // Phase 9: Real canvas block insertion (Inhibited during coaching & chaining interactions)
             const extraCards: ChatMessage[] = [];
-            if (!isRunCoachingAnswer && res.code_json && Array.isArray(res.code_json) && res.code_json.length > 0) {
+            const isChainResponse = isRunCoachingAnswer || isArticulationAnswer || isReflectionAnswer;
+            if (!isChainResponse && res.code_json && Array.isArray(res.code_json) && res.code_json.length > 0) {
                 console.log('[Phase9] Inserting code_json to canvas:', res.code_json);
                 const insertRes = insertCodeJsonToCanvas(res.code_json);
                 if (insertRes.success) {
@@ -934,8 +968,50 @@ export const AIAsidePanel: React.FC = () => {
                         timestamp: apiNowTime,
                     });
                 }
-            } else if (isRunCoachingAnswer && res.code_json) {
-                console.log('[Coaching] code_json insertion inhibited during coaching response.');
+            } else if (isChainResponse && res.code_json) {
+                console.log('[Chain] code_json insertion inhibited during coaching/chaining response.');
+            }
+
+            // Chaining Facilitator Cards triggered right AFTER this AI response
+            if (isRunCoachingAnswer) {
+                const outcome = res.coaching_outcome || (
+                    (trimmed.includes('응') || trimmed.includes('잘') || trimmed.includes('성공') || trimmed.includes('됐') || trimmed.includes('맞아') || trimmed.includes('좋아') || trimmed.includes('원하던'))
+                        ? 'success'
+                        : 'failure'
+                );
+                console.log(`[Coaching][Branch] Post-coaching response outcome evaluated as: ${outcome}`);
+                if (outcome === 'success') {
+                    onEnterArticulation();
+                    const clarificationText = '코드 설명해볼까요?';
+                    const clarificationMsg: ChatMessage = {
+                        id: `clarification_chain_${Date.now()}`,
+                        sender: 'facilitator',
+                        title: '🧭 AI 퍼실리테이터 - 명료화 안내',
+                        text: clarificationText,
+                        timestamp: apiNowTime,
+                    };
+                    pendingFacilitatorCards.push(clarificationMsg);
+                    eventLogger.logFacilitatorIntervention('clarification', clarificationText, { trigger: 'coaching_success_chain' });
+                } else {
+                    onEnterScaffolding();
+                }
+            } else if (isArticulationAnswer) {
+                // Learner just answered clarification question ("코드 설명해볼까요?").
+                // AI responded with canvas-grounded feedback. Now trigger reflection question:
+                onEnterReflection();
+                const reflectionText = 'AI의 제안 외에 스스로 생각해서 한 부분은 무엇이었나요?';
+                const reflectionMsg: ChatMessage = {
+                    id: `reflection_chain_${Date.now()}`,
+                    sender: 'facilitator',
+                    title: '🧭 AI 퍼실리테이터 - 성찰 안내',
+                    text: reflectionText,
+                    timestamp: apiNowTime,
+                };
+                pendingFacilitatorCards.push(reflectionMsg);
+                eventLogger.logFacilitatorIntervention('reflection', reflectionText, { trigger: 'articulation_chain' });
+            } else if (isReflectionAnswer) {
+                // Learner just answered reflection question. AI responded. End chain.
+                onEndChain();
             }
 
             const realAssistantReply: ChatMessage = {
@@ -969,21 +1045,6 @@ export const AIAsidePanel: React.FC = () => {
             lastSuggestionTimeRef.current = suggestionEvent.timestamp;
             lastReflectionCheckTimeRef.current = suggestionEvent.timestamp;
             console.log(`[Phase8][Claude] Real AI response received and swapped into chat.`);
-
-            // Post-coaching strategy transition hook
-            if (isRunCoachingAnswer) {
-                const outcome = res.coaching_outcome || (
-                    (trimmed.includes('응') || trimmed.includes('잘') || trimmed.includes('성공') || trimmed.includes('됐') || trimmed.includes('맞아') || trimmed.includes('좋아') || trimmed.includes('원하던'))
-                        ? 'success'
-                        : 'failure'
-                );
-                console.log(`[Coaching][Branch] Post-coaching response outcome evaluated as: ${outcome}`);
-                if (outcome === 'success') {
-                    onEnterArticulation();
-                } else {
-                    onEnterScaffolding();
-                }
-            }
         }).catch((err) => {
             const errorReply: ChatMessage = {
                 id: `assistant_err_${Date.now()}`,
@@ -1031,7 +1092,9 @@ export const AIAsidePanel: React.FC = () => {
                     const count = (errorMessageCountsRef.current[key] || 0) + 1;
                     errorMessageCountsRef.current[key] = count;
                     console.log(`[Phase5][Exploration] Error key "${key}" count = ${count}`);
-                    if (count >= 2 && !explorationShownRef.current) {
+                    // Collision guard: do not trigger exploration during active coaching/articulation/reflection chain
+                    const isChainActive = isInArticulationRef.current || waitingArticulationAnswerRef.current || isInReflectionRef.current || waitingReflectionAnswerRef.current || waitingRunCoachingRef.current;
+                    if (count >= 2 && !explorationShownRef.current && !isChainActive) {
                         // Show exploration card immediately
                         const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                         const explorationText = 'AI에게 확인하기 전에, 코드를 고칠 다른 방법을 생각해보세요.';
