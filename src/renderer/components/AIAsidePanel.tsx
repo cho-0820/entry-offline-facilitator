@@ -785,22 +785,23 @@ export const AIAsidePanel: React.FC = () => {
             // Prepare for next interval
             hasErrorInCurrentRunRef.current = false;
 
-            // ---- Coaching Trigger on Run (Phase 4 / New Trigger) ----
+            // ---- Direct Clarification Trigger on Run (Phase 1.5 Redesign) ----
+            // Execution with canvas blocks present directly triggers Clarification ("코드 설명해볼까요?")
             const { sanitized: currentBlocks } = collectSanitizedCanvasCode();
             if (currentBlocks && currentBlocks.length > 0) {
                 const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const coachingPrompt = '실행해보니 어땠어? 원하던 대로 잘 움직였어?';
-                const coachingMsg: ChatMessage = {
-                    id: `coaching_run_${Date.now()}`,
+                const clarificationText = '코드 설명해볼까요?';
+                const clarificationMsg: ChatMessage = {
+                    id: `clarification_direct_${Date.now()}`,
                     sender: 'facilitator',
-                    title: '🧭 AI 퍼실리테이터 - 코칭 안내',
-                    text: coachingPrompt,
+                    title: '🧭 AI 퍼실리테이터 - 명료화 안내',
+                    text: clarificationText,
                     timestamp: nowTime,
                 };
-                setMessages((prev) => [...prev, coachingMsg]);
-                waitingRunCoachingRef.current = true;
-                eventLogger.logFacilitatorIntervention('coaching', coachingPrompt, { trigger: 'run_button_click' });
-                console.log('[Coaching][RunTrigger] Coaching question triggered on run button click with canvas blocks present.');
+                setMessages((prev) => [...prev, clarificationMsg]);
+                onEnterArticulation();
+                eventLogger.logFacilitatorIntervention('clarification', clarificationText, { trigger: 'run_success_direct' });
+                console.log('[Clarification][RunTrigger] Direct clarification question triggered on run button click with canvas blocks present.');
             }
         });
 
@@ -825,7 +826,7 @@ export const AIAsidePanel: React.FC = () => {
         if (isRunCoachingAnswer) {
             waitingRunCoachingRef.current = false;
             eventLogger.logAIChatInput(trimmed, { inResponseToCoaching: true, strategy: 'coaching', trigger_strategy: 'coaching' });
-            console.log('[Coaching][RunTrigger] Learner answered run coaching inquiry:', trimmed);
+            console.log('[Coaching][ErrorTrigger] Learner answered error coaching inquiry:', trimmed);
         } else if (isArticulationAnswer) {
             waitingArticulationAnswerRef.current = false;
             eventLogger.logAIChatInput(trimmed, { inResponseToArticulation: true, strategy: 'clarification', trigger_strategy: 'clarification' });
@@ -912,7 +913,7 @@ export const AIAsidePanel: React.FC = () => {
         // Include user and code_assistant messages, plus any run coaching or chaining inquiries from facilitator so Claude has context
         // Keep up to 10 recent turns (20 messages max) to manage token cost
         const historyForAssistant: Array<{ role: 'user' | 'assistant'; content: string }> = messages
-            .filter((m) => ((m.sender === 'user' || m.sender === 'code_assistant') || (m.sender === 'facilitator' && (m.id.startsWith('coaching_run_') || m.id.startsWith('clarification_chain_') || m.id.startsWith('reflection_chain_')))) && !m.id.includes('loading') && m.text.trim().length > 0)
+            .filter((m) => ((m.sender === 'user' || m.sender === 'code_assistant') || (m.sender === 'facilitator' && (m.id.startsWith('coaching_error_') || m.id.startsWith('clarification_direct_') || m.id.startsWith('clarification_chain_') || m.id.startsWith('reflection_chain_')))) && !m.id.includes('loading') && m.text.trim().length > 0)
             .map((m) => ({
                 role: (m.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
                 content: m.text,
@@ -974,27 +975,9 @@ export const AIAsidePanel: React.FC = () => {
 
             // Chaining Facilitator Cards triggered right AFTER this AI response
             if (isRunCoachingAnswer) {
-                const outcome = res.coaching_outcome || (
-                    (trimmed.includes('응') || trimmed.includes('잘') || trimmed.includes('성공') || trimmed.includes('됐') || trimmed.includes('맞아') || trimmed.includes('좋아') || trimmed.includes('원하던'))
-                        ? 'success'
-                        : 'failure'
-                );
-                console.log(`[Coaching][Branch] Post-coaching response outcome evaluated as: ${outcome}`);
-                if (outcome === 'success') {
-                    onEnterArticulation();
-                    const clarificationText = '코드 설명해볼까요?';
-                    const clarificationMsg: ChatMessage = {
-                        id: `clarification_chain_${Date.now()}`,
-                        sender: 'facilitator',
-                        title: '🧭 AI 퍼실리테이터 - 명료화 안내',
-                        text: clarificationText,
-                        timestamp: apiNowTime,
-                    };
-                    pendingFacilitatorCards.push(clarificationMsg);
-                    eventLogger.logFacilitatorIntervention('clarification', clarificationText, { trigger: 'coaching_success_chain' });
-                } else {
-                    onEnterScaffolding();
-                }
+                // Learner replied to error coaching inquiry. AI provided hint/guidance. Transition to scaffolding state.
+                onEnterScaffolding();
+                console.log('[Coaching][ErrorTrigger] Answered error coaching; transitioned to scaffolding.');
             } else if (isArticulationAnswer) {
                 // Learner just answered clarification question ("코드 설명해볼까요?").
                 // AI responded with canvas-grounded feedback. Now trigger reflection question:
@@ -1077,8 +1060,8 @@ export const AIAsidePanel: React.FC = () => {
         }
     };
 
-    // ---- Error Hook for Exploration Trigger (Phase 5) ----
-    // Monkey‑patch eventLogger.logError to count error messages by their template key.
+    // ---- Error Hook for Error Coaching (Phase 1.5) & Exploration Trigger (Phase 5) ----
+    // Monkey‑patch eventLogger.logError to count error messages by their template key and trigger error coaching.
     // This runs once when the component mounts.
     useEffect(() => {
         const originalLogError = eventLogger.logError.bind(eventLogger);
@@ -1092,11 +1075,34 @@ export const AIAsidePanel: React.FC = () => {
                     const count = (errorMessageCountsRef.current[key] || 0) + 1;
                     errorMessageCountsRef.current[key] = count;
                     console.log(`[Phase5][Exploration] Error key "${key}" count = ${count}`);
+
+                    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                    // Phase 1.5 Redesign: Trigger error coaching question on error
+                    // If run started, any error switches conversation to coaching ("왜 안 될까요? 어디서부터 확인해볼까요?")
+                    if (!waitingRunCoachingRef.current) {
+                        waitingRunCoachingRef.current = true;
+                        // Cancel any pending direct articulation since an error occurred
+                        isInArticulationRef.current = false;
+                        waitingArticulationAnswerRef.current = false;
+
+                        const coachingPrompt = '왜 안 될까요? 어디서부터 확인해볼까요?';
+                        const coachingMsg: ChatMessage = {
+                            id: `coaching_error_${Date.now()}`,
+                            sender: 'facilitator',
+                            title: '🧭 AI 퍼실리테이터 - 코칭 안내',
+                            text: coachingPrompt,
+                            timestamp: nowTime,
+                        };
+                        setMessages((prev) => [...prev, coachingMsg]);
+                        eventLogger.logFacilitatorIntervention('coaching', coachingPrompt, { trigger: 'runtime_error', errorKey: key });
+                        console.log('[Coaching][ErrorTrigger] Error coaching question triggered on runtime error.');
+                    }
+
                     // Collision guard: do not trigger exploration during active coaching/articulation/reflection chain
-                    const isChainActive = isInArticulationRef.current || waitingArticulationAnswerRef.current || isInReflectionRef.current || waitingReflectionAnswerRef.current || waitingRunCoachingRef.current;
+                    const isChainActive = isInArticulationRef.current || waitingArticulationAnswerRef.current || isInReflectionRef.current || waitingReflectionAnswerRef.current;
                     if (count >= 2 && !explorationShownRef.current && !isChainActive) {
                         // Show exploration card immediately
-                        const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                         const explorationText = 'AI에게 확인하기 전에, 코드를 고칠 다른 방법을 생각해보세요.';
                         const explorationMsg: ChatMessage = {
                             id: `exploration_${Date.now()}`,
