@@ -714,24 +714,12 @@ export const AIAsidePanel: React.FC = () => {
     };
     // Phase 2 — Scaffolding Trigger: tracks if scaffolding has been shown in the current session.
     const scaffoldingShownRef = useRef<boolean>(false);
-            // (Removed duplicate clarification refs)
-    // Phase 5 — Reflection Trigger: independent timestamp reference.
-    const lastReflectionCheckTimeRef = useRef<string | null>(null);
-    const reflectionCooldownRef = useRef<number>(0); // timestamp (ms) until which reflection is on cooldown
-    const REFLECTION_WINDOW_MS = 30 * 1000; // 30 seconds window after suggestion
-    const REFLECTION_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes cooldown after showing
     // Phase 5 — Exploration Trigger: error counting based on message template key
     const errorMessageCountsRef = useRef<Record<string, number>>({});
     const hasErrorInCurrentRunRef = useRef<boolean>(false);
     const explorationShownRef = useRef<boolean>(false);
     // Phase 5 — Exploration Trigger (Trigger ②): Snapshot of canvas when AI reply completed
     const lastResponseCanvasSnapshotRef = useRef<any[] | null>(null);
-
-    // Phase 4 — Clarification Trigger: tracks the timestamp of the LATEST block_suggestion.
-    // Multiple rapid suggestions will overwrite this ref, so only the last one defines
-    // the window start. A run_start event checks block_change events after this timestamp.
-    const lastSuggestionTimeRef = useRef<string | null>(null);
-    const clarificationShownRef = useRef<boolean>(false);
 
     // Phase 6 — Data Collection Consent State
     const [showConsentModal, setShowConsentModal] = useState<boolean>(() => {
@@ -798,35 +786,6 @@ export const AIAsidePanel: React.FC = () => {
     // Since logRunStart() always calls our listener regardless of Entry, the timing is reliable.
     useEffect(() => {
         const unsubscribe = eventLogger.addRunStartListener(() => {
-            // ---- Clarification Trigger (Phase 4) ----
-            const suggestionTime = lastSuggestionTimeRef.current;
-            if (suggestionTime && !clarificationShownRef.current) {
-                const logs = eventLogger.getLogs();
-                const hasBlockChangeAfterSuggestion = logs.some(
-                    (e) => e.type === 'block_change' && e.timestamp > suggestionTime
-                );
-                if (!hasBlockChangeAfterSuggestion) {
-                    clarificationShownRef.current = true;
-                    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    const clarificationText = 'AI가 제안한 블록이 뭘 하는지 스스로 설명해볼 수 있나요?';
-                    const clarificationMsg: ChatMessage = {
-                        id: `clarification_${Date.now()}`,
-                        sender: 'facilitator',
-                        title: '🧭 AI 퍼실리테이터 - 명료화 안내',
-                        text: clarificationText,
-                        timestamp: nowTime,
-                    };
-                    setMessages((prev) => [...prev, clarificationMsg]);
-                    eventLogger.logFacilitatorIntervention('clarification', clarificationText);
-                    console.log('[Phase4][Clarification] Clarification card triggered (no block_change after last suggestion).');
-                } else {
-                    console.log('[Phase4][Clarification] Block changes detected after suggestion — clarification skipped.');
-                }
-            }
-            // Reset suggestion timestamp after handling
-            lastSuggestionTimeRef.current = null;
-            clarificationShownRef.current = false;
-
             // ---- Exploration Reset Logic (Phase 5) ----
             // Do not wipe counts on immediate consecutive runs if previous run encountered an error
             if (!hasErrorInCurrentRunRef.current && Object.keys(errorMessageCountsRef.current).length > 0) {
@@ -899,27 +858,9 @@ export const AIAsidePanel: React.FC = () => {
             eventLogger.logAIChatInput(trimmed);
         }
 
-        // Phase 5 — Reflection Trigger: check if a recent suggestion exists within window and cooldown passed
-        // Collision guard: do not trigger suggestion-based reflection during active chain or when answering chain questions
+        // Collision guard: check if active coaching or chaining turn is in progress
         const isChainActive = isInArticulationRef.current || waitingArticulationAnswerRef.current || isInReflectionRef.current || waitingReflectionAnswerRef.current || isArticulationAnswer || isReflectionAnswer || isRunCoachingAnswer;
-        let reflectionMsg: ChatMessage | null = null;
-        if (!isChainActive && lastReflectionCheckTimeRef.current) {
-            const prevSuggestion = new Date(lastReflectionCheckTimeRef.current);
-            const now = new Date();
-            if (now.getTime() - prevSuggestion.getTime() <= REFLECTION_WINDOW_MS && now.getTime() >= reflectionCooldownRef.current) {
-                const reflectionText = 'AI의 접근 방식이 당신과 어떻게 다르고, 왜 다른가요?';
-                reflectionMsg = {
-                    id: `reflection_${Date.now()}`,
-                    sender: 'facilitator',
-                    title: '🧭 AI 퍼실리테이터 - 성찰 안내',
-                    text: reflectionText,
-                    timestamp: nowTime,
-                };
-                reflectionCooldownRef.current = now.getTime() + REFLECTION_COOLDOWN_MS;
-                eventLogger.logFacilitatorIntervention('reflection', reflectionText);
-                console.log('[Phase5][Reflection] Reflection card triggered.');
-            }
-        }
+
         // Phase 5 — Exploration Trigger (Trigger ②: Unchanged Canvas on Re-query)
         // If student sends a new question (not answering coaching/articulation/reflection chain),
         // and canvas code has NOT changed structurally since the last assistant response, trigger exploration:
@@ -956,11 +897,6 @@ export const AIAsidePanel: React.FC = () => {
         // Append exploration card if triggered
         if (explorationCard) {
             pendingFacilitatorCards.push(explorationCard);
-        }
-
-        // Append reflection card if triggered
-        if (reflectionMsg) {
-            pendingFacilitatorCards.push(reflectionMsg);
         }
 
         // 3. Requirement 2: Scaffolding trigger (Shown ONLY upon first learner-initiated coding prompt in session, excluded on coaching/chain replies)
@@ -1108,11 +1044,6 @@ export const AIAsidePanel: React.FC = () => {
                 }
                 return newArr;
             });
-
-            // Phase 4 — Clarification & Reflection Trigger timestamp update
-            const suggestionEvent = eventLogger.logBlockSuggestion({ query: trimmed, responseText, code_json: res.code_json });
-            lastSuggestionTimeRef.current = suggestionEvent.timestamp;
-            lastReflectionCheckTimeRef.current = suggestionEvent.timestamp;
 
             // Phase 5 — Exploration Trigger (Trigger ②): Snapshot canvas state after AI reply (and any block insertion) completes
             const { sanitized: postReplyCanvas } = collectSanitizedCanvasCode();
