@@ -562,6 +562,56 @@ function sanitizeCanvasBlock(node: any, isTopBlock: boolean = false): any {
 }
 
 /**
+ * Phase 5 — Exploration Trigger (Unchanged Canvas Diff):
+ * Normalizes a block by stripping volatile fields (id, x, y coordinates) and preserving
+ * only structural logic: type, params, and statements.
+ */
+function normalizeBlockForDiff(node: any): any {
+    if (!node || typeof node !== 'object') return node;
+    if (Array.isArray(node)) {
+        return node.map((child: any) => normalizeBlockForDiff(child));
+    }
+
+    const norm: Record<string, any> = {
+        type: node.type,
+    };
+    if (node.params && Array.isArray(node.params)) {
+        norm.params = node.params.map((p: any) => normalizeBlockForDiff(p));
+    }
+    if (node.statements && Array.isArray(node.statements)) {
+        norm.statements = node.statements.map((branch: any) => {
+            if (!Array.isArray(branch)) return [];
+            return branch.map((child: any) => normalizeBlockForDiff(child));
+        });
+    }
+    return norm;
+}
+
+/**
+ * Normalizes full canvasCodeJson array for structural diff comparison
+ */
+function normalizeCanvasForDiff(canvasCode: any[]): any[] {
+    if (!Array.isArray(canvasCode)) return [];
+    return canvasCode.map((obj: any) => ({
+        objectName: obj.objectName || '오브젝트',
+        script: (obj.script || []).map((thread: any[]) => {
+            if (!Array.isArray(thread)) return [];
+            return thread.map((b: any) => normalizeBlockForDiff(b));
+        }),
+    }));
+}
+
+/**
+ * Compares two canvas structures for equality
+ */
+function areCanvasCodesIdentical(canvasA: any[] | null, canvasB: any[] | null): boolean {
+    if (!canvasA || !canvasB) return false;
+    const normA = normalizeCanvasForDiff(canvasA);
+    const normB = normalizeCanvasForDiff(canvasB);
+    return JSON.stringify(normA) === JSON.stringify(normB);
+}
+
+/**
  * Entry.container.toJSON()에서 모든 오브젝트의 스크립트를 추출하고 sanitize 수행
  */
 function collectSanitizedCanvasCode(): { sanitized: any[]; rawBytes: number; sanitizedBytes: number } {
@@ -674,6 +724,8 @@ export const AIAsidePanel: React.FC = () => {
     const errorMessageCountsRef = useRef<Record<string, number>>({});
     const hasErrorInCurrentRunRef = useRef<boolean>(false);
     const explorationShownRef = useRef<boolean>(false);
+    // Phase 5 — Exploration Trigger (Trigger ②): Snapshot of canvas when AI reply completed
+    const lastResponseCanvasSnapshotRef = useRef<any[] | null>(null);
 
     // Phase 4 — Clarification Trigger: tracks the timestamp of the LATEST block_suggestion.
     // Multiple rapid suggestions will overwrite this ref, so only the last one defines
@@ -776,13 +828,14 @@ export const AIAsidePanel: React.FC = () => {
             clarificationShownRef.current = false;
 
             // ---- Exploration Reset Logic (Phase 5) ----
-            if (!hasErrorInCurrentRunRef.current) {
-                // No errors logged in the interval before this run_start → reset counts
+            // Do not wipe counts on immediate consecutive runs if previous run encountered an error
+            if (!hasErrorInCurrentRunRef.current && Object.keys(errorMessageCountsRef.current).length > 0) {
+                // If a run completed without any error occurring, reset error counts
                 errorMessageCountsRef.current = {};
                 explorationShownRef.current = false;
-                console.log('[Phase5][Exploration] No errors in previous run interval; error counters reset.');
+                console.log('[Phase5][Exploration] Previous run was error-free; error counters reset.');
             }
-            // Prepare for next interval
+            // Prepare for current run interval
             hasErrorInCurrentRunRef.current = false;
 
             // ---- Direct Clarification Trigger on Run (Phase 1.5 Redesign) ----
@@ -867,6 +920,27 @@ export const AIAsidePanel: React.FC = () => {
                 console.log('[Phase5][Reflection] Reflection card triggered.');
             }
         }
+        // Phase 5 — Exploration Trigger (Trigger ②: Unchanged Canvas on Re-query)
+        // If student sends a new question (not answering coaching/articulation/reflection chain),
+        // and canvas code has NOT changed structurally since the last assistant response, trigger exploration:
+        let explorationCard: ChatMessage | null = null;
+        if (!isChainActive && lastResponseCanvasSnapshotRef.current) {
+            const { sanitized: currentCanvas } = collectSanitizedCanvasCode();
+            const isIdentical = areCanvasCodesIdentical(currentCanvas, lastResponseCanvasSnapshotRef.current);
+            console.log(`[Phase5][Exploration] Canvas comparison with last response snapshot: identical=${isIdentical}`);
+            if (isIdentical) {
+                const explorationText = 'AI에게 다시 묻기 전에, 스스로 다른 방법을 먼저 시도해볼까요?';
+                explorationCard = {
+                    id: `exploration_unchanged_${Date.now()}`,
+                    sender: 'facilitator',
+                    title: '🧭 AI 퍼실리테이터 - 탐색 안내',
+                    text: explorationText,
+                    timestamp: nowTime,
+                };
+                eventLogger.logFacilitatorIntervention('exploration', explorationText, { trigger: 'unchanged_canvas' });
+                console.log('[Phase5][Exploration] Unchanged canvas exploration card triggered.');
+            }
+        }
 
         // 2. Append User Message
         const userMsg: ChatMessage = {
@@ -878,6 +952,11 @@ export const AIAsidePanel: React.FC = () => {
 
         // Collect facilitator cards triggered during this chat input turn to be shown AFTER Code Assistant's reply
         const pendingFacilitatorCards: ChatMessage[] = [];
+
+        // Append exploration card if triggered
+        if (explorationCard) {
+            pendingFacilitatorCards.push(explorationCard);
+        }
 
         // Append reflection card if triggered
         if (reflectionMsg) {
@@ -1034,6 +1113,12 @@ export const AIAsidePanel: React.FC = () => {
             const suggestionEvent = eventLogger.logBlockSuggestion({ query: trimmed, responseText, code_json: res.code_json });
             lastSuggestionTimeRef.current = suggestionEvent.timestamp;
             lastReflectionCheckTimeRef.current = suggestionEvent.timestamp;
+
+            // Phase 5 — Exploration Trigger (Trigger ②): Snapshot canvas state after AI reply (and any block insertion) completes
+            const { sanitized: postReplyCanvas } = collectSanitizedCanvasCode();
+            lastResponseCanvasSnapshotRef.current = postReplyCanvas;
+            console.log(`[Phase5][Exploration] Updated lastResponseCanvasSnapshotRef with ${postReplyCanvas.length} object(s).`);
+
             console.log(`[Phase8][Claude] Real AI response received and swapped into chat.`);
         }).catch((err) => {
             const errorReply: ChatMessage = {
@@ -1110,9 +1195,9 @@ export const AIAsidePanel: React.FC = () => {
                     const isChainActive = isInArticulationRef.current || waitingArticulationAnswerRef.current || isInReflectionRef.current || waitingReflectionAnswerRef.current;
                     if (count >= 2 && !explorationShownRef.current && !isChainActive) {
                         // Show exploration card immediately
-                        const explorationText = 'AI에게 확인하기 전에, 코드를 고칠 다른 방법을 생각해보세요.';
+                        const explorationText = 'AI에게 다시 묻기 전에, 스스로 다른 방법을 먼저 시도해볼까요?';
                         const explorationMsg: ChatMessage = {
-                            id: `exploration_${Date.now()}`,
+                            id: `exploration_error_${Date.now()}`,
                             sender: 'facilitator',
                             title: '🧭 AI 퍼실리테이터 - 탐색 안내',
                             text: explorationText,
@@ -1120,8 +1205,8 @@ export const AIAsidePanel: React.FC = () => {
                         };
                         setMessages((prev) => [...prev, explorationMsg]);
                         explorationShownRef.current = true;
-                        eventLogger.logFacilitatorIntervention('exploration', explorationText, { errorKey: key, errorCount: count });
-                        console.log('[Phase5][Exploration] Exploration card triggered.');
+                        eventLogger.logFacilitatorIntervention('exploration', explorationText, { trigger: 'repeated_runtime_error', errorKey: key, errorCount: count });
+                        console.log('[Phase5][Exploration] Repeated runtime error exploration card triggered.');
                     }
                 }
             }
