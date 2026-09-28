@@ -760,7 +760,7 @@ export const AIAsidePanel: React.FC = () => {
 
         // Requirement 1: Modeling trigger (Shown ONLY before first input in a new project session)
         if (isNewProject && !eventLogger.getHasSentFirstChat()) {
-            const modelingText = '어떤 기능이 필요하고 어떤 순서로 만들지 생각해봤나요?';
+            const modelingText = '어떤 프로그램을 만들려고 하나요? 입력-처리-출력 과정을 먼저 설명해볼까요?';
             initList.push({
                 id: 'modeling_trigger',
                 sender: 'facilitator',
