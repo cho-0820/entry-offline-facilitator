@@ -47,9 +47,11 @@ if (!app.requestSingleInstanceLock()) {
     });
 
     app.once('ready', () => {
-        autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-            logger.error(`[autoUpdater] Check for updates error: ${err}`);
-        });
+        if (app.isPackaged) {
+            autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+                logger.error(`[autoUpdater] Check for updates error: ${err}`);
+            });
+        }
         mainWindow = new MainWindowManager(commandLineOptions);
         const hardwareWindow = new HardwareWindowManager();
         const aboutWindow = new AboutWindowManager(mainWindow.window);

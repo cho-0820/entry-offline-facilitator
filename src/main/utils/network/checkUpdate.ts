@@ -8,6 +8,14 @@ type Response = { hasNewVersion: boolean, version: string };
 export default (): Promise<Response> => new Promise((resolve, reject) => {
     const { updateCheckUrl, version } = global.sharedObject;
 
+    if (!updateCheckUrl || updateCheckUrl === 'none' || process.env.NODE_ENV === 'development') {
+        resolve({
+            hasNewVersion: false,
+            version: version || '0.0.0',
+        });
+        return;
+    }
+
     const request = net.request({
         method: 'POST',
         url: updateCheckUrl,

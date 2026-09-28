@@ -11,7 +11,6 @@ export default class {
     constructor(parentWindow?: BrowserWindow) {
         this.parentWindow = parentWindow;
         this.aboutWindow = undefined;
-        this.createAboutWindow();
     }
 
     createAboutWindow() {
